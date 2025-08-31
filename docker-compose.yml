@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: hrmate-db
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - hrmate-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $POSTGRES_USER" ]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+    networks:
+      - hrmate-network
+
+  backend:
+    build: .
+    image: hrmate:latest
+    container_name: hrmate-backend
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hrmate-network
+
+networks:
+  hrmate-network:
+    name: hrmate-network
+    driver: bridge
+
+volumes:
+  hrmate-data:
+    name: hrmate-data
