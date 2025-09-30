@@ -17,7 +17,7 @@ func (app *application) adminImplementation() error {
 	}
 
 	if admin != nil {
-		return nil // Админ уже существует
+		return nil
 	}
 
 	email := os.Getenv("ADMIN_EMAIL")
@@ -36,7 +36,7 @@ func (app *application) adminImplementation() error {
 		ID:             uuid.New(),
 		Role:           domain.RoleAdmin,
 		FirstName:      "Super",
-		LastName:       "Admin",
+		LastName:       "User",
 		Position:       "Administrator",
 		Email:          email,
 		HashedPassword: string(hashedPassword),
