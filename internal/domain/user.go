@@ -12,16 +12,6 @@ const (
 	RoleAdmin    Role = "admin"
 )
 
-type EmployeeRepository interface {
-	Create(user *User) error
-	FindById(userId uuid.UUID) (*User, error)
-	FindByEmail(email string) (*User, error)
-	FindAdmin(admin Role) (*User, error)
-	Update(user *User) error
-	FindAllByRole(...Role) ([]User, error)
-	IsActive(userID uuid.UUID) (bool, error)
-}
-
 type User struct {
 	ID             uuid.UUID `json:"id" db:"id"`
 	Role           Role      `json:"role,omitempty" db:"user_role"`
@@ -33,23 +23,10 @@ type User struct {
 	IsActive       bool      `json:"isActive" db:"is_active"`
 }
 
-func NewEmployee(firstName, lastName, position, email, password string) User {
+func NewUser(role Role, firstName, lastName, position, email, password string) User {
 	return User{
 		ID:             uuid.New(),
-		Role:           RoleEmployee,
-		FirstName:      firstName,
-		LastName:       lastName,
-		Position:       position,
-		Email:          email,
-		HashedPassword: password,
-		IsActive:       true,
-	}
-}
-
-func NewHR(firstName, lastName, position, email, password string) User {
-	return User{
-		ID:             uuid.New(),
-		Role:           RoleHR,
+		Role:           role,
 		FirstName:      firstName,
 		LastName:       lastName,
 		Position:       position,
@@ -64,6 +41,6 @@ func (u *User) ChangeNames(newFirstName, newLastName string) {
 	u.LastName = newLastName
 }
 
-func (u *User) UpdateStatus(isActive bool) {
+func (u *User) ChangeStatus(isActive bool) {
 	u.IsActive = isActive
 }

@@ -13,15 +13,6 @@ const (
 	Approved Status = "Approved"
 )
 
-type FormRepository interface {
-	Create(form *Form) error
-	FindByID(formId uuid.UUID) (*Form, error)
-	FindByUserIDWithUser(userID uuid.UUID) ([]UserWithForms, error)
-	FindByIDWithUser(formId uuid.UUID) (*UserWithForm, error)
-	FindAllWithUsers() ([]UserWithForms, error)
-	Update(form *Form) error
-}
-
 type Form struct {
 	ID          uuid.UUID `json:"id"          db:"id"`
 	UserID      uuid.UUID `json:"userId"      db:"user_id"`

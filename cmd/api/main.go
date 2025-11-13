@@ -1,60 +1,46 @@
 package main
 
 import (
-	"database/sql"
-	"fmt"
-	"github.com/go-playground/validator/v10"
+	"context"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/joho/godotenv/autoload"
-	"github.com/platonso/hrmate/internal/db"
-	"github.com/platonso/hrmate/internal/env"
-	"github.com/platonso/hrmate/internal/repository"
+	"github.com/platonso/hrmate/internal/app"
+	"github.com/platonso/hrmate/internal/config"
 	"log"
-	"os"
 )
 
-type application struct {
-	port         int
-	jwtSecret    string
-	repositories *repository.Repository
-	validator    *validator.Validate
-}
-
 func main() {
-	connStr := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s",
-		os.Getenv("POSTGRES_HOST"),
-		os.Getenv("POSTGRES_PORT"),
-		os.Getenv("POSTGRES_USER"),
-		os.Getenv("POSTGRES_PASSWORD"),
-		os.Getenv("POSTGRES_DB"),
-	)
 
-	conn, err := sql.Open("pgx", connStr)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cfg, err := config.New()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Config error: %v", err)
 	}
 
-	defer conn.Close()
+	application, err := app.New(ctx, cfg)
+	if err != nil {
+		log.Fatalf("Failed to init app: %v", err)
+	}
+	defer application.Close()
 
-	if err := conn.Ping(); err != nil {
-		log.Fatal("Cannot connect to DB:", err)
+	if err := application.StartServer(); err != nil {
+		log.Fatalf("Server error: %v", err)
 	}
 
-	db.RunMigrations(conn)
+	//ctx, cancel := context.WithCancel(context.Background())
+	//defer cancel()
+	//
+	//cfg, err := config.New()
+	//if err != nil {
+	//	log.Fatalf("Config error: %v", err)
+	//}
+	//
+	//application, err := app.New(ctx, cfg)
+	//if err != nil {
+	//	log.Fatalf("Failed to init app: %v", err)
+	//}
+	//defer application.Close()
 
-	app := &application{
-		port:         env.GetEnvInt("PORT", 8080),
-		jwtSecret:    os.Getenv("JWT_SECRET"),
-		repositories: repository.NewRepository(conn),
-		validator:    validator.New(),
-	}
-
-	if err := app.adminImplementation(); err != nil {
-		log.Fatalf("failed to implement admin: %v", err)
-	}
-
-	if err := app.StartServer(); err != nil {
-		log.Fatal(err)
-	}
 }

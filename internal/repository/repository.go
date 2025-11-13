@@ -1,19 +1,27 @@
 package repository
 
 import (
-	"database/sql"
+	"context"
+	"github.com/google/uuid"
+	"github.com/platonso/hrmate/internal/controller/httpapi/dto"
 	"github.com/platonso/hrmate/internal/domain"
-	"github.com/platonso/hrmate/internal/repository/postgres"
 )
 
-type Repository struct {
-	Users domain.EmployeeRepository
-	Forms domain.FormRepository
+type UserRepository interface {
+	Create(ctx context.Context, user *domain.User) error
+	FindByUserId(ctx context.Context, userId uuid.UUID) (*domain.User, error)
+	FindByEmail(ctx context.Context, email string) (*domain.User, error)
+	FindAdmin(ctx context.Context) (*domain.User, error)
+	Update(ctx context.Context, user *domain.User) error
+	FindAllByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
+	IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
 }
 
-func NewRepository(db *sql.DB) *Repository {
-	return &Repository{
-		Users: &postgres.UserRepository{DB: db},
-		Forms: &postgres.FormRepository{DB: db},
-	}
+type FormRepository interface {
+	Create(ctx context.Context, form *domain.Form) error
+	FindByFormID(ctx context.Context, formId uuid.UUID) (*domain.Form, error)
+	FindByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Form, error)
+	FindByUserIDWithUser(ctx context.Context, userID uuid.UUID) ([]dto.FormsWithUserResponse, error)
+	FindAllWithUsers(ctx context.Context) ([]dto.FormsWithUserResponse, error)
+	Update(ctx context.Context, form *domain.Form) error
 }
