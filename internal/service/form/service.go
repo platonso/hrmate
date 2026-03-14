@@ -1,31 +1,33 @@
-package service
+package form
 
 import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/google/uuid"
-	"github.com/platonso/hrmate/internal/controller/httpapi/dto"
 	"github.com/platonso/hrmate/internal/domain"
+	errs "github.com/platonso/hrmate/internal/errors"
+	"github.com/platonso/hrmate/internal/handler/form/dto"
 	"github.com/platonso/hrmate/internal/repository"
 )
 
-type FormService struct {
-	formRepo repository.FormRepository
-	userRepo repository.UserRepository
+type Service struct {
+	formRepo repository.Form
+	userRepo repository.User
 }
 
-func NewFormService(
-	formRepo repository.FormRepository,
-	userRepo repository.UserRepository,
-) *FormService {
-	return &FormService{
+func NewService(
+	formRepo repository.Form,
+	userRepo repository.User,
+) *Service {
+	return &Service{
 		formRepo: formRepo,
 		userRepo: userRepo,
 	}
 }
 
-func (s *FormService) Create(ctx context.Context, formDTO *dto.FormCreateRequest, userID uuid.UUID) (*domain.Form, error) {
+func (s *Service) Create(ctx context.Context, formDTO *dto.FormCreateRequest, userID uuid.UUID) (*domain.Form, error) {
 	form := domain.NewForm(
 		userID,
 		formDTO.Title,
@@ -41,17 +43,17 @@ func (s *FormService) Create(ctx context.Context, formDTO *dto.FormCreateRequest
 	return &form, nil
 }
 
-func (s *FormService) GetForm(ctx context.Context, formID, currentUserID uuid.UUID) (*dto.FormWithUserResponse, error) {
+func (s *Service) GetForm(ctx context.Context, formID, currentUserID uuid.UUID) (*dto.FormWithUserResponse, error) {
 
 	currentUser, err := s.userRepo.FindByUserId(ctx, currentUserID)
 	if err != nil {
-		return nil, domain.ErrUserNotFound
+		return nil, errs.ErrUserNotFound
 	}
 
 	form, err := s.formRepo.FindByFormID(ctx, formID)
 	if err != nil {
-		if errors.Is(err, domain.ErrFormNotFound) {
-			return nil, domain.ErrFormNotFound
+		if errors.Is(err, errs.ErrFormNotFound) {
+			return nil, errs.ErrFormNotFound
 		}
 		return nil, fmt.Errorf("find form: %w", err)
 	}
@@ -75,13 +77,13 @@ func (s *FormService) GetForm(ctx context.Context, formID, currentUserID uuid.UU
 			return &formWithUser, nil
 		}
 	}
-	return nil, domain.ErrForbidden
+	return nil, errs.ErrForbidden
 }
 
-func (s *FormService) GetAllForms(ctx context.Context, currentUserID uuid.UUID) ([]dto.FormsWithUserResponse, error) {
+func (s *Service) GetAllForms(ctx context.Context, currentUserID uuid.UUID) ([]dto.FormsWithUserResponse, error) {
 	currentUser, err := s.userRepo.FindByUserId(ctx, currentUserID)
 	if err != nil {
-		return nil, domain.ErrUserNotFound
+		return nil, errs.ErrUserNotFound
 	}
 
 	switch currentUser.Role {
@@ -97,24 +99,29 @@ func (s *FormService) GetAllForms(ctx context.Context, currentUserID uuid.UUID) 
 		if err != nil {
 			return nil, err
 		}
+		if len(formsWithUsers) == 0 {
+			return []dto.FormsWithUserResponse{}, nil
+		}
 		if formsWithUsers[0].User.ID == currentUser.ID {
 			return formsWithUsers, nil
 		}
 	}
 
-	return nil, domain.ErrForbidden
+	return nil, errs.ErrForbidden
 }
 
-func (s *FormService) Update(ctx context.Context, newStatus *dto.FormStatusUpdateRequest, formID, currentUserID uuid.UUID) (*domain.Form, error) {
+func (s *Service) Update(ctx context.Context, newStatus *dto.FormStatusUpdateRequest, formID uuid.UUID) (*domain.Form, error) {
 	form, err := s.formRepo.FindByFormID(ctx, formID)
 	if err != nil {
 		return nil, fmt.Errorf("find form: %w", err)
 	}
 
-	form.UpdateStatus(newStatus.Status)
+	if newStatus.Status != form.Status {
+		form.UpdateStatus(newStatus.Status)
 
-	if err := s.formRepo.Update(ctx, form); err != nil {
-		return nil, fmt.Errorf("update form: %w", err)
+		if err := s.formRepo.Update(ctx, form); err != nil {
+			return nil, fmt.Errorf("update form: %w", err)
+		}
 	}
 
 	return form, nil

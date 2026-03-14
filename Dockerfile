@@ -1,18 +1,24 @@
-FROM golang:1.24.2-alpine AS builder
+FROM golang:1.25.1-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
 COPY go.mod go.sum ./
 RUN go mod download
-
 COPY . .
 
-RUN go build -o server ./cmd/api
+RUN go build -o server ./cmd/app/
 
-FROM alpine:latest AS runner
+RUN go build -o migrator ./cmd/migrator/
+
+FROM alpine:latest AS app
 
 WORKDIR /app
-
-COPY --from=builder /app/server .
-
+COPY --from=builder /build/server .
 CMD ["./server"]
+
+FROM alpine:latest AS migrator
+
+WORKDIR /app
+COPY --from=builder /build/migrator .
+COPY --from=builder /build/migrations/ ./migrations/
+CMD ["./migrator"]

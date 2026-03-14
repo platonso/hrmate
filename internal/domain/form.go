@@ -6,11 +6,11 @@ import (
 	"github.com/google/uuid"
 )
 
-type Status string
+type FormStatus string
 
 const (
-	Pending  Status = "Pending"
-	Approved Status = "Approved"
+	StatusPending  FormStatus = "pending"
+	StatusApproved FormStatus = "approved"
 )
 
 type Form struct {
@@ -24,7 +24,7 @@ type Form struct {
 
 	CreatedAt  time.Time  `json:"createdAt"   db:"created_at"`
 	ApprovedAt *time.Time `json:"approvedAt"  db:"approved_at"`
-	Status     Status     `json:"status"      db:"status"`
+	Status     FormStatus `json:"status"      db:"status"`
 }
 
 func NewForm(userID uuid.UUID, title, description string, startDate, endDate *time.Time) Form {
@@ -37,11 +37,11 @@ func NewForm(userID uuid.UUID, title, description string, startDate, endDate *ti
 		EndDate:     endDate,
 		CreatedAt:   time.Now(),
 		ApprovedAt:  nil,
-		Status:      Pending,
+		Status:      StatusPending,
 	}
 }
 
-func (f *Form) UpdateStatus(newStatus Status) {
+func (f *Form) UpdateStatus(newStatus FormStatus) {
 	approveTime := time.Now()
 	f.Status = newStatus
 	f.ApprovedAt = &approveTime

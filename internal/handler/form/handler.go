@@ -1,36 +1,47 @@
-package httpapi
+package form
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
+	"net/http"
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
-	"github.com/platonso/hrmate/internal/controller/httpapi/dto"
 	"github.com/platonso/hrmate/internal/domain"
-	"github.com/platonso/hrmate/internal/service"
-	"net/http"
-	"time"
+	errs "github.com/platonso/hrmate/internal/errors"
+	formdto "github.com/platonso/hrmate/internal/handler/form/dto"
+	"github.com/platonso/hrmate/internal/handler/httpapi"
+	"github.com/platonso/hrmate/internal/handler/httpapi/dto"
 )
 
-type FormHandler struct {
-	formService *service.FormService
-	validator   *validator.Validate
+type Service interface {
+	Create(ctx context.Context, formDTO *formdto.FormCreateRequest, userID uuid.UUID) (*domain.Form, error)
+	GetForm(ctx context.Context, formID, currentUserID uuid.UUID) (*formdto.FormWithUserResponse, error)
+	GetAllForms(ctx context.Context, currentUserID uuid.UUID) ([]formdto.FormsWithUserResponse, error)
+	Update(ctx context.Context, newStatus *formdto.FormStatusUpdateRequest, formID uuid.UUID) (*domain.Form, error)
 }
 
-func NewFormHandler(formService *service.FormService, v *validator.Validate) *FormHandler {
-	return &FormHandler{
-		formService: formService,
-		validator:   v,
+type Handler struct {
+	svc       Service
+	validator *validator.Validate
+}
+
+func NewHandler(svc Service, v *validator.Validate) *Handler {
+	return &Handler{
+		svc:       svc,
+		validator: v,
 	}
 }
 
-func (h *FormHandler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	var req dto.FormCreateRequest
+	var req formdto.FormCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid JSON"))
 		return
@@ -40,13 +51,13 @@ func (h *FormHandler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
 		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("validation failed"))
 	}
 
-	userID, ok := GetUserID(ctx)
+	userID, ok := httpapi.GetUserID(ctx)
 	if !ok {
 		dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing user ID in context"))
 		return
 	}
 
-	form, err := h.formService.Create(ctx, &req, userID)
+	form, err := h.svc.Create(ctx, &req, userID)
 	if err != nil {
 		dto.WriteJSONError(w, http.StatusInternalServerError, err)
 		return
@@ -57,7 +68,7 @@ func (h *FormHandler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(form)
 }
 
-func (h *FormHandler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -68,15 +79,15 @@ func (h *FormHandler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := GetUserID(ctx)
+	userID, _ := httpapi.GetUserID(ctx)
 
-	result, err := h.formService.GetForm(ctx, formID, userID)
+	result, err := h.svc.GetForm(ctx, formID, userID)
 	if err != nil {
 		switch {
-		case errors.Is(err, domain.ErrFormNotFound):
-			dto.WriteJSONError(w, http.StatusNotFound, nil)
-		case errors.Is(err, domain.ErrForbidden):
-			dto.WriteJSONError(w, http.StatusForbidden, err)
+		case errors.Is(err, errs.ErrFormNotFound):
+			dto.WriteJSONError(w, http.StatusNotFound, errors.New("form not found"))
+		case errors.Is(err, errs.ErrForbidden):
+			dto.WriteJSONError(w, http.StatusForbidden, errors.New("forbidden"))
 		default:
 			dto.WriteJSONError(w, http.StatusInternalServerError, err)
 		}
@@ -88,13 +99,13 @@ func (h *FormHandler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *FormHandler) HandleGetForms(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleGetForms(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	userID, _ := GetUserID(ctx)
+	userID, _ := httpapi.GetUserID(ctx)
 
-	result, err := h.formService.GetAllForms(ctx, userID)
+	result, err := h.svc.GetAllForms(ctx, userID)
 	if err != nil {
 		dto.WriteJSONError(w, http.StatusInternalServerError, err)
 		return
@@ -104,7 +115,7 @@ func (h *FormHandler) HandleGetForms(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-func (h *FormHandler) HandleUpdateFormStatus(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleUpdateFormStatus(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -115,7 +126,7 @@ func (h *FormHandler) HandleUpdateFormStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	var req dto.FormStatusUpdateRequest
+	var req formdto.FormStatusUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid JSON"))
 		return
@@ -126,15 +137,14 @@ func (h *FormHandler) HandleUpdateFormStatus(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	userID, _ := GetUserID(ctx)
-
-	form, err := h.formService.Update(ctx, &req, formID, userID)
+	form, err := h.svc.Update(ctx, &req, formID)
 	if err != nil {
 		switch {
-		case errors.Is(err, domain.ErrFormNotFound):
-			dto.WriteJSONError(w, http.StatusNotFound, nil)
+		case errors.Is(err, errs.ErrFormNotFound):
+			dto.WriteJSONError(w, http.StatusNotFound, errors.New("form not found"))
 		default:
-			dto.WriteJSONError(w, http.StatusInternalServerError, err)
+			dto.WriteJSONError(w, http.StatusInternalServerError, errors.New("internal server error"))
+			log.Println(err)
 		}
 		return
 	}

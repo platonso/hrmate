@@ -3,14 +3,16 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-	"github.com/platonso/hrmate/internal/controller/httpapi/dto"
-	"github.com/platonso/hrmate/internal/domain"
-	"github.com/platonso/hrmate/internal/service"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/platonso/hrmate/internal/domain"
+	errs "github.com/platonso/hrmate/internal/errors"
+	authdto "github.com/platonso/hrmate/internal/handler/auth/dto"
+	"github.com/platonso/hrmate/internal/handler/httpapi/dto"
 )
 
 const (
@@ -18,9 +20,22 @@ const (
 	userRoleKey = "userRole"
 )
 
+type AuthService interface {
+	Register(ctx context.Context, userDTO *authdto.RegisterRequest) (string, error)
+	Login(ctx context.Context, userDTO *authdto.LoginRequest) (string, error)
+	GetJWTSecret() string
+}
+
+type UserService interface {
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error)
+	GetUsersByRole(ctx context.Context, requesterRole domain.Role) ([]domain.User, error)
+	IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
+}
+
 type AuthMiddleware struct {
-	authService service.AuthService
-	userService service.UserService
+	AuthSvc AuthService
+	UserSvc UserService
 }
 
 func (m *AuthMiddleware) AuthMiddleware(next http.Handler) http.Handler {
@@ -42,7 +57,7 @@ func (m *AuthMiddleware) AuthMiddleware(next http.Handler) http.Handler {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
-			return []byte(m.authService.JWTSecret), nil
+			return []byte(m.AuthSvc.GetJWTSecret()), nil
 		})
 
 		if err != nil || !token.Valid {
@@ -135,9 +150,9 @@ func (m *AuthMiddleware) RequireActiveStatus(next http.Handler) http.Handler {
 			return
 		}
 
-		isActive, err := m.userService.IsActive(r.Context(), userID)
+		isActive, err := m.UserSvc.IsActive(r.Context(), userID)
 		if err != nil {
-			dto.WriteJSONError(w, http.StatusUnauthorized, domain.ErrInvalidCredentials)
+			dto.WriteJSONError(w, http.StatusUnauthorized, errs.ErrInvalidCredentials)
 			log.Printf("failed to get isActive status: %v", err)
 			return
 		}

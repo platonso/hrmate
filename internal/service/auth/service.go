@@ -1,38 +1,39 @@
-package service
+package auth
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-	"github.com/platonso/hrmate/internal/controller/httpapi/dto"
-	"github.com/platonso/hrmate/internal/domain"
-	"github.com/platonso/hrmate/internal/repository"
-	"golang.org/x/crypto/bcrypt"
 	"log"
 	"os"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/platonso/hrmate/internal/domain"
+	errs "github.com/platonso/hrmate/internal/errors"
+	"github.com/platonso/hrmate/internal/handler/auth/dto"
+	"github.com/platonso/hrmate/internal/repository"
+	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthService struct {
-	userRepo  repository.UserRepository
-	JWTSecret string
+type Service struct {
+	userRepo  repository.User
+	jwtSecret string
 }
 
-func NewAuthService(userRepo repository.UserRepository) *AuthService {
-	return &AuthService{userRepo: userRepo}
+func NewService(userRepo repository.User) *Service {
+	return &Service{userRepo: userRepo}
 }
 
-func (s *AuthService) ImplementAdmin(ctx context.Context) error {
-	admin, err := s.userRepo.FindAdmin(ctx)
+func (s *Service) ImplementAdmin(ctx context.Context) error {
+
+	admin, err := s.userRepo.FindAllByRole(ctx, domain.RoleAdmin)
 	if err != nil {
-		if errors.Is(err, domain.ErrUserNotFound) {
-			return fmt.Errorf("admin user not found")
-		}
 		return fmt.Errorf("failed to find admin")
 	}
 
-	if admin != nil {
+	if len(admin) > 0 {
+		log.Println("the existing admin is used")
 		return nil
 	}
 
@@ -48,34 +49,33 @@ func (s *AuthService) ImplementAdmin(ctx context.Context) error {
 		return fmt.Errorf("failed to hash admin password: %w", err)
 	}
 
-	adminUser := domain.User{
-		ID:             uuid.New(),
-		Role:           domain.RoleAdmin,
-		FirstName:      "Super",
-		LastName:       "User",
-		Position:       "Administrator",
-		Email:          email,
-		HashedPassword: string(hashedPassword),
-		IsActive:       true,
-	}
+	adminUser := domain.NewUser(
+		domain.RoleAdmin,
+		"Super",
+		"User",
+		"Administrator",
+		email,
+		string(hashedPassword),
+	)
+
+	adminUser.ChangeStatus(true)
 
 	if err := s.userRepo.Create(ctx, &adminUser); err != nil {
 		return fmt.Errorf("failed to create admin: %w", err)
 	}
 
-	log.Println("Admin created")
+	log.Println("admin has been created successfully")
 	return nil
 
 }
 
-func (s *AuthService) Register(ctx context.Context, userDTO *dto.RegisterRequest) (string, error) {
+func (s *Service) Register(ctx context.Context, userDTO *dto.RegisterRequest) (string, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(userDTO.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 
-	var user domain.User
-	user = domain.NewUser(
+	user := domain.NewUser(
 		userDTO.Role,
 		userDTO.FirstName,
 		userDTO.LastName,
@@ -92,7 +92,7 @@ func (s *AuthService) Register(ctx context.Context, userDTO *dto.RegisterRequest
 		return "", fmt.Errorf("create user: %w", err)
 	}
 
-	token, err := generateJWT(user.ID, user.Role, s.JWTSecret)
+	token, err := generateJWT(user.ID, user.Role, s.jwtSecret)
 	if err != nil {
 		return "", fmt.Errorf("generate jwt: %w", err)
 	}
@@ -100,25 +100,29 @@ func (s *AuthService) Register(ctx context.Context, userDTO *dto.RegisterRequest
 	return token, nil
 }
 
-func (s *AuthService) Login(ctx context.Context, userDTO *dto.LoginRequest) (string, error) {
+func (s *Service) Login(ctx context.Context, userDTO *dto.LoginRequest) (string, error) {
 	user, err := s.userRepo.FindByEmail(ctx, userDTO.Email)
 	if err != nil {
-		if errors.Is(err, domain.ErrUserNotFound) {
-			return "", domain.ErrInvalidCredentials
+		if errors.Is(err, errs.ErrUserNotFound) {
+			return "", errs.ErrInvalidCredentials
 		}
 		return "", fmt.Errorf("find user by email: %w", err)
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(userDTO.Password)); err != nil {
-		return "", domain.ErrInvalidCredentials
+		return "", errs.ErrInvalidCredentials
 	}
 
-	token, err := generateJWT(user.ID, user.Role, s.JWTSecret)
+	token, err := generateJWT(user.ID, user.Role, s.jwtSecret)
 	if err != nil {
 		return "", fmt.Errorf("generate jwt: %w", err)
 	}
 
 	return token, nil
+}
+
+func (s *Service) GetJWTSecret() string {
+	return s.jwtSecret
 }
 
 func generateJWT(userID uuid.UUID, role domain.Role, secret string) (string, error) {

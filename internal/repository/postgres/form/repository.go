@@ -1,24 +1,26 @@
-package postgres
+package form
 
 import (
 	"context"
 	"errors"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/platonso/hrmate/internal/controller/httpapi/dto"
 	"github.com/platonso/hrmate/internal/domain"
+	errs "github.com/platonso/hrmate/internal/errors"
+	"github.com/platonso/hrmate/internal/handler/form/dto"
 )
 
-type FormRepository struct {
+type Repository struct {
 	DB *pgxpool.Pool
 }
 
-func NewFormRepository(db *pgxpool.Pool) *FormRepository {
-	return &FormRepository{DB: db}
+func NewRepository(db *pgxpool.Pool) *Repository {
+	return &Repository{DB: db}
 }
 
-func (f *FormRepository) Create(ctx context.Context, form *domain.Form) error {
+func (f *Repository) Create(ctx context.Context, form *domain.Form) error {
 	query := `
 		INSERT INTO forms (id, user_id, title, description, start_date, end_date, created_at, approved_at, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -39,10 +41,9 @@ func (f *FormRepository) Create(ctx context.Context, form *domain.Form) error {
 	return err
 }
 
-func (f *FormRepository) FindByFormID(ctx context.Context, formId uuid.UUID) (*domain.Form, error) {
+func (f *Repository) FindByFormID(ctx context.Context, formId uuid.UUID) (*domain.Form, error) {
 	query := `
 		SELECT 
-		    u.id, u.first_name, u.last_name, u.position, u.email,
 		    f.id, f.user_id, f.title, f.description, f.start_date, 
 		    f.end_date, f.created_at, f.approved_at, f.status
 		FROM forms f 
@@ -66,7 +67,7 @@ func (f *FormRepository) FindByFormID(ctx context.Context, formId uuid.UUID) (*d
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrFormNotFound
+			return nil, errs.ErrFormNotFound
 		}
 		return nil, err
 	}
@@ -74,10 +75,9 @@ func (f *FormRepository) FindByFormID(ctx context.Context, formId uuid.UUID) (*d
 	return &form, nil
 }
 
-func (f *FormRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Form, error) {
+func (f *Repository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Form, error) {
 	formsQuery := `
-        SELECT id, user_id, title, description, start_date, end_date, 
-               created_at, approved_at, status
+        SELECT id, user_id, title, description, start_date, end_date, created_at, approved_at, status
         FROM forms WHERE user_id = $1
     `
 	rows, err := f.DB.Query(ctx, formsQuery, userID)
@@ -113,11 +113,13 @@ func (f *FormRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]
 	return forms, nil
 }
 
-func (f *FormRepository) FindByUserIDWithUser(ctx context.Context, userID uuid.UUID) ([]dto.FormsWithUserResponse, error) {
+func (f *Repository) FindByUserIDWithUser(ctx context.Context, userID uuid.UUID) ([]dto.FormsWithUserResponse, error) {
+
+	// TODO: fix
 
 	query := `
 		SELECT 
-		    u.id, u.first_name, u.last_name, u.position, u.email,
+		    u.id, u.first_name, u.last_name, u.position, u.email, u.is_active,
 		    f.id, f.user_id, f.title, f.description, f.start_date, 
 		    f.end_date, f.created_at, f.approved_at, f.status
 		FROM forms f 
@@ -143,6 +145,7 @@ func (f *FormRepository) FindByUserIDWithUser(ctx context.Context, userID uuid.U
 			&user.LastName,
 			&user.Position,
 			&user.Email,
+			&user.IsActive,
 			&form.ID,
 			&form.UserID,
 			&form.Title,
@@ -177,11 +180,11 @@ func (f *FormRepository) FindByUserIDWithUser(ctx context.Context, userID uuid.U
 	return result, nil
 }
 
-func (f *FormRepository) FindAllWithUsers(ctx context.Context) ([]dto.FormsWithUserResponse, error) {
+func (f *Repository) FindAllWithUsers(ctx context.Context) ([]dto.FormsWithUserResponse, error) {
 
 	query := `
 		SELECT 
-			u.id, u.first_name, u.last_name, u.position, u.email,
+			u.id, u.first_name, u.last_name, u.position, u.email, u.is_active,
 		    f.id, f.user_id, f.title, f.description, f.start_date, 
 		    f.end_date, f.created_at, f.approved_at, f.status
 		FROM users u
@@ -201,7 +204,7 @@ func (f *FormRepository) FindAllWithUsers(ctx context.Context) ([]dto.FormsWithU
 		var form domain.Form
 
 		err := rows.Scan(
-			&user.ID, &user.FirstName, &user.LastName, &user.Position, &user.Email,
+			&user.ID, &user.FirstName, &user.LastName, &user.Position, &user.Email, &user.IsActive,
 			&form.ID, &form.UserID, &form.Title, &form.Description, &form.StartDate, &form.EndDate,
 			&form.CreatedAt, &form.ApprovedAt, &form.Status,
 		)
@@ -231,16 +234,22 @@ func (f *FormRepository) FindAllWithUsers(ctx context.Context) ([]dto.FormsWithU
 	return result, nil
 }
 
-func (f *FormRepository) Update(ctx context.Context, form *domain.Form) error {
-	query := `UPDATE forms SET status = $1 WHERE id = $2`
+func (f *Repository) Update(ctx context.Context, form *domain.Form) error {
+	query := `
+	UPDATE forms 
+	SET 
+	    status = $1,
+	    approved_at = $2
+		
+	WHERE id = $3`
 
-	tag, err := f.DB.Exec(ctx, query, form.Status, form.ID)
+	tag, err := f.DB.Exec(ctx, query, form.Status, form.ApprovedAt, form.ID)
 	if err != nil {
 		return err
 	}
 
 	if tag.RowsAffected() == 0 {
-		return domain.ErrFormNotFound
+		return errs.ErrFormNotFound
 	}
 
 	return nil

@@ -2,12 +2,13 @@ package repository
 
 import (
 	"context"
+
 	"github.com/google/uuid"
-	"github.com/platonso/hrmate/internal/controller/httpapi/dto"
 	"github.com/platonso/hrmate/internal/domain"
+	"github.com/platonso/hrmate/internal/handler/form/dto"
 )
 
-type UserRepository interface {
+type User interface {
 	Create(ctx context.Context, user *domain.User) error
 	FindByUserId(ctx context.Context, userId uuid.UUID) (*domain.User, error)
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
@@ -17,7 +18,7 @@ type UserRepository interface {
 	IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
 }
 
-type FormRepository interface {
+type Form interface {
 	Create(ctx context.Context, form *domain.Form) error
 	FindByFormID(ctx context.Context, formId uuid.UUID) (*domain.Form, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Form, error)

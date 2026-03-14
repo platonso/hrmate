@@ -1,8 +1,9 @@
 package dto
 
 import (
-	"github.com/platonso/hrmate/internal/domain"
 	"time"
+
+	"github.com/platonso/hrmate/internal/domain"
 )
 
 type FormCreateRequest struct {
@@ -13,7 +14,7 @@ type FormCreateRequest struct {
 }
 
 type FormStatusUpdateRequest struct {
-	Status domain.Status `json:"status" validate:"required,oneof=pending approved"`
+	Status domain.FormStatus `json:"status" validate:"required,oneof=pending approved"`
 }
 
 type FormWithUserResponse struct {

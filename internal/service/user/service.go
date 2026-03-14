@@ -1,27 +1,24 @@
-package service
+package user
 
 import (
 	"context"
 	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
+	"github.com/platonso/hrmate/internal/errors"
 	"github.com/platonso/hrmate/internal/repository"
 )
 
-type UserService struct {
-	userRepo repository.UserRepository
+type Service struct {
+	userRepo repository.User
 }
 
-func NewUserService(userRepo repository.UserRepository) *UserService {
-	return &UserService{userRepo: userRepo}
+func NewService(userRepo repository.User) *Service {
+	return &Service{userRepo: userRepo}
 }
 
-type UpdateUserStatusCommand struct {
-	UserID uuid.UUID
-	Status bool
-}
-
-func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
+func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	user, err := s.userRepo.FindByUserId(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
@@ -30,7 +27,7 @@ func (s *UserService) GetUserByID(ctx context.Context, userID uuid.UUID) (*domai
 	return user, nil
 }
 
-func (s *UserService) UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error) {
+func (s *Service) UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error) {
 	user, err := s.userRepo.FindByUserId(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
@@ -45,7 +42,7 @@ func (s *UserService) UpdateStatus(ctx context.Context, userID uuid.UUID, newSta
 	return user, nil
 }
 
-func (s *UserService) GetUsersByRole(ctx context.Context, requesterRole domain.Role) ([]domain.User, error) {
+func (s *Service) GetUsersByRole(ctx context.Context, requesterRole domain.Role) ([]domain.User, error) {
 	var rolesToQuery []domain.Role
 
 	switch requesterRole {
@@ -54,7 +51,7 @@ func (s *UserService) GetUsersByRole(ctx context.Context, requesterRole domain.R
 	case domain.RoleHR:
 		rolesToQuery = []domain.Role{domain.RoleEmployee}
 	default:
-		return nil, domain.ErrForbidden
+		return nil, errors.ErrForbidden
 	}
 
 	users, err := s.userRepo.FindAllByRole(ctx, rolesToQuery...)
@@ -69,7 +66,7 @@ func (s *UserService) GetUsersByRole(ctx context.Context, requesterRole domain.R
 	return users, nil
 }
 
-func (s *UserService) IsActive(ctx context.Context, userID uuid.UUID) (bool, error) {
+func (s *Service) IsActive(ctx context.Context, userID uuid.UUID) (bool, error) {
 	active, err := s.userRepo.IsActive(ctx, userID)
 	if err != nil {
 		return false, fmt.Errorf("check user active status: %w", err)

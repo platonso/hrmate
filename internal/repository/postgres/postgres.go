@@ -3,26 +3,29 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/platonso/hrmate/internal/repository"
-	"time"
+	"github.com/platonso/hrmate/internal/repository/postgres/form"
+	"github.com/platonso/hrmate/internal/repository/postgres/user"
 )
 
 type Repository struct {
-	Users repository.UserRepository
-	Forms repository.FormRepository
+	Users repository.User
+	Forms repository.Form
 	db    *pgxpool.Pool
 }
 
 func NewRepository(ctx context.Context, connStr string) (*Repository, error) {
-	db, err := newPool(ctx, connStr)
+	db, err := NewPool(ctx, connStr)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Repository{
-		Users: NewUserRepository(db),
-		Forms: NewFormRepository(db),
+		Users: user.NewRepository(db),
+		Forms: form.NewRepository(db),
 		db:    db,
 	}, nil
 }
@@ -33,7 +36,7 @@ func (r *Repository) Close() {
 	}
 }
 
-func newPool(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
+func NewPool(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

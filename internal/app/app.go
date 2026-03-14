@@ -4,21 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/platonso/hrmate/internal/config"
-	"github.com/platonso/hrmate/internal/controller/httpapi"
-	"github.com/platonso/hrmate/internal/repository/postgres"
-	"github.com/platonso/hrmate/internal/service"
 	"log"
 	"net/http"
+
+	"github.com/platonso/hrmate/internal/config"
+	"github.com/platonso/hrmate/internal/handler"
+	"github.com/platonso/hrmate/internal/repository/postgres"
+	"github.com/platonso/hrmate/internal/service/auth"
+	"github.com/platonso/hrmate/internal/service/form"
+	"github.com/platonso/hrmate/internal/service/user"
 )
 
 type Application struct {
 	Config *config.Config
-	Auth   *service.AuthService
-	Users  *service.UserService
-	Forms  *service.FormService
+	Auth   *auth.Service
+	Users  *user.Service
+	Forms  *form.Service
 
-	router    *httpapi.Router
+	router    *handler.Router
 	closeFunc func()
 }
 
@@ -28,9 +31,13 @@ func New(ctx context.Context, cfg *config.Config) (*Application, error) {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
 
-	authService := service.NewAuthService(postgresRepo.Users)
-	userService := service.NewUserService(postgresRepo.Users)
-	formService := service.NewFormService(postgresRepo.Forms, postgresRepo.Users)
+	userService := user.NewService(postgresRepo.Users)
+	authService := auth.NewService(postgresRepo.Users)
+	formService := form.NewService(postgresRepo.Forms, postgresRepo.Users)
+
+	if err := authService.ImplementAdmin(ctx); err != nil {
+		return nil, fmt.Errorf("failed to implement admin: %w", err)
+	}
 
 	app := &Application{
 		Config: cfg,
@@ -38,7 +45,7 @@ func New(ctx context.Context, cfg *config.Config) (*Application, error) {
 		Users:  userService,
 		Forms:  formService,
 
-		router:    httpapi.NewRouter(authService, userService, formService),
+		router:    handler.NewRouter(authService, userService, formService),
 		closeFunc: postgresRepo.Close,
 	}
 
