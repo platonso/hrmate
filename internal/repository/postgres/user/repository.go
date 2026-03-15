@@ -19,12 +19,12 @@ func NewRepository(db *pgxpool.Pool) *Repository {
 	return &Repository{DB: db}
 }
 
-func (u *Repository) Create(ctx context.Context, user *domain.User) error {
+func (r *Repository) Create(ctx context.Context, user *domain.User) error {
 	query := `
 		INSERT INTO users (id, user_role, first_name, last_name, position, email, hashed_password, is_active)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
-	_, err := u.DB.Exec(
+	_, err := r.DB.Exec(
 		ctx,
 		query,
 		user.ID,
@@ -39,9 +39,9 @@ func (u *Repository) Create(ctx context.Context, user *domain.User) error {
 	return err
 }
 
-func (u *Repository) findUser(ctx context.Context, query string, args ...any) (*domain.User, error) {
+func (r *Repository) findUser(ctx context.Context, query string, args ...any) (*domain.User, error) {
 	var user domain.User
-	err := u.DB.QueryRow(ctx, query, args...).Scan(
+	err := r.DB.QueryRow(ctx, query, args...).Scan(
 		&user.ID,
 		&user.Role,
 		&user.FirstName,
@@ -60,46 +60,28 @@ func (u *Repository) findUser(ctx context.Context, query string, args ...any) (*
 	return &user, nil
 }
 
-func (u *Repository) FindByUserId(ctx context.Context, userId uuid.UUID) (*domain.User, error) {
+func (r *Repository) FindByUserID(ctx context.Context, userId uuid.UUID) (*domain.User, error) {
 	query := `
 		SELECT id, user_role, first_name, last_name, position, email, hashed_password, is_active
 		FROM users
 		WHERE id = $1		
 `
-	return u.findUser(ctx, query, userId)
+	return r.findUser(ctx, query, userId)
 }
 
-func (u *Repository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (r *Repository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `
 		SELECT id, user_role, first_name, last_name, position, email, hashed_password, is_active
 		FROM users
 		WHERE email = $1		
 `
-	return u.findUser(ctx, query, email)
+	return r.findUser(ctx, query, email)
 }
 
-func (u *Repository) FindAdmin(ctx context.Context) (*domain.User, error) {
-	query := `
-		SELECT id, user_role, first_name, last_name, position, email, hashed_password, is_active 
-		FROM users 
-		WHERE user_role = $1 
-		LIMIT 1
-`
-	user, err := u.findUser(ctx, query, domain.RoleAdmin)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errs.ErrUserNotFound
-		}
-		return nil, err
-	}
-
-	return user, nil
-}
-
-func (u *Repository) Update(ctx context.Context, user *domain.User) error {
+func (r *Repository) Update(ctx context.Context, user *domain.User) error {
 	query := `UPDATE users SET is_active = $1 WHERE id = $2`
 
-	tag, err := u.DB.Exec(ctx, query, user.IsActive, user.ID)
+	tag, err := r.DB.Exec(ctx, query, user.IsActive, user.ID)
 	if err != nil {
 		return err
 	}
@@ -111,7 +93,7 @@ func (u *Repository) Update(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-func (u *Repository) FindAllByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error) {
+func (r *Repository) FindAllByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error) {
 	if len(roles) == 0 {
 		return []domain.User{}, nil
 	}
@@ -121,7 +103,7 @@ func (u *Repository) FindAllByRole(ctx context.Context, roles ...domain.Role) ([
 		FROM users
 		WHERE user_role = ANY($1)
 `
-	rows, err := u.DB.Query(ctx, query, roles)
+	rows, err := r.DB.Query(ctx, query, roles)
 	if err != nil {
 		return nil, err
 	}
@@ -154,11 +136,11 @@ func (u *Repository) FindAllByRole(ctx context.Context, roles ...domain.Role) ([
 	return users, nil
 }
 
-func (u *Repository) IsActive(ctx context.Context, userID uuid.UUID) (bool, error) {
+func (r *Repository) IsActive(ctx context.Context, userID uuid.UUID) (bool, error) {
 	query := `SELECT is_active FROM users WHERE id = $1`
 
 	var active bool
-	err := u.DB.QueryRow(ctx, query, userID).Scan(&active)
+	err := r.DB.QueryRow(ctx, query, userID).Scan(&active)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, errs.ErrUserNotFound

@@ -31,13 +31,15 @@ func New(ctx context.Context, cfg *config.Config) (*Application, error) {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
 
-	userService := user.NewService(postgresRepo.Users)
-	authService := auth.NewService(postgresRepo.Users)
-	formService := form.NewService(postgresRepo.Forms, postgresRepo.Users)
+	userService := user.NewService(&postgresRepo.Users)
+	authService := auth.NewService(&postgresRepo.Users)
+	formService := form.NewService(&postgresRepo.Forms, &postgresRepo.Users)
 
 	if err := authService.ImplementAdmin(ctx); err != nil {
 		return nil, fmt.Errorf("failed to implement admin: %w", err)
 	}
+
+	router := handler.NewRouter(authService, userService, formService)
 
 	app := &Application{
 		Config: cfg,
@@ -45,7 +47,7 @@ func New(ctx context.Context, cfg *config.Config) (*Application, error) {
 		Users:  userService,
 		Forms:  formService,
 
-		router:    handler.NewRouter(authService, userService, formService),
+		router:    router,
 		closeFunc: postgresRepo.Close,
 	}
 

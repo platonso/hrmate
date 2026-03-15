@@ -13,15 +13,15 @@ import (
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
 	authdto "github.com/platonso/hrmate/internal/handler/auth/dto"
-	"github.com/platonso/hrmate/internal/handler/httpapi"
-	"github.com/platonso/hrmate/internal/handler/httpapi/dto"
+	"github.com/platonso/hrmate/internal/handler/middleware"
+	"github.com/platonso/hrmate/internal/handler/middleware/dto"
 )
 
 type Service interface {
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.User, error)
-	UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error)
 	GetUsersByRole(ctx context.Context, requesterRole domain.Role) ([]domain.User, error)
-	IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
+	UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error)
+	//GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.Username, error)
+	//IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
 }
 
 type Handler struct {
@@ -74,7 +74,7 @@ func (h *Handler) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	role, ok := httpapi.GetUserRole(ctx)
+	role, ok := middleware.GetUserRole(ctx)
 	if !ok {
 		dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing role"))
 		return

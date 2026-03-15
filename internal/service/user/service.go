@@ -7,19 +7,24 @@ import (
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
 	"github.com/platonso/hrmate/internal/errors"
-	"github.com/platonso/hrmate/internal/repository"
 )
 
+type Repository interface {
+	Update(ctx context.Context, user *domain.User) error
+	FindAllByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
+	FindByUserID(ctx context.Context, userId uuid.UUID) (*domain.User, error)
+	IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
+}
 type Service struct {
-	userRepo repository.User
+	repo Repository
 }
 
-func NewService(userRepo repository.User) *Service {
-	return &Service{userRepo: userRepo}
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo}
 }
 
 func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
-	user, err := s.userRepo.FindByUserId(ctx, userID)
+	user, err := s.repo.FindByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
 	}
@@ -28,14 +33,14 @@ func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.Us
 }
 
 func (s *Service) UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error) {
-	user, err := s.userRepo.FindByUserId(ctx, userID)
+	user, err := s.repo.FindByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
 	}
 
 	user.ChangeStatus(newStatus)
 
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.repo.Update(ctx, user); err != nil {
 		return nil, fmt.Errorf("update user: %w", err)
 	}
 
@@ -54,7 +59,7 @@ func (s *Service) GetUsersByRole(ctx context.Context, requesterRole domain.Role)
 		return nil, errors.ErrForbidden
 	}
 
-	users, err := s.userRepo.FindAllByRole(ctx, rolesToQuery...)
+	users, err := s.repo.FindAllByRole(ctx, rolesToQuery...)
 	if err != nil {
 		return nil, fmt.Errorf("find users by role: %w", err)
 	}
@@ -67,7 +72,7 @@ func (s *Service) GetUsersByRole(ctx context.Context, requesterRole domain.Role)
 }
 
 func (s *Service) IsActive(ctx context.Context, userID uuid.UUID) (bool, error) {
-	active, err := s.userRepo.IsActive(ctx, userID)
+	active, err := s.repo.IsActive(ctx, userID)
 	if err != nil {
 		return false, fmt.Errorf("check user active status: %w", err)
 	}

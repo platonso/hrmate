@@ -6,23 +6,23 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
+type PostgresConfig struct {
+	Host         string `env:"POSTGRES_HOST" env-required:"true"`
+	Port         string `env:"POSTGRES_PORT" env-required:"true"`
+	Username     string `env:"POSTGRES_USER" env-required:"true"`
+	Password     string `env:"POSTGRES_PASSWORD" env-required:"true"`
+	Database     string `env:"POSTGRES_DB" env-required:"true"`
+	MigrationDir string `env:"MIGRATION_DIR" env-default:"./migrations"`
+}
+
 type Config struct {
-	HTTPPort       string `env:"HTTP_PORT" env-default:"true"`
-	JWTSecret      string `env:"JWT_SECRET" env-required:"true"`
-	PostgresUser   string `env:"POSTGRES_USER" env-required:"true"`
-	PostgresPass   string `env:"POSTGRES_PASSWORD" env-required:"true"`
-	PostgresDB     string `env:"POSTGRES_DB" env-required:"true"`
-	PostgresHost   string `env:"POSTGRES_HOST" env-required:"true"`
-	PostgresPort   string `env:"POSTGRES_PORT" env-required:"true"`
-	MigrationsPath string `env:"GOOSE_MIGRATION_DIR" env-default:"./migrations"`
+	PostgresConfig
+	HTTPPort  string `env:"HTTP_PORT" env-default:"8080"`
+	JWTSecret string `env:"JWT_SECRET" env-required:"true"`
 }
 
 func New() (*Config, error) {
 	var cfg Config
-
-	//if err := godotenv.Load(); err != nil {
-	//	log.Println(".env file not found, using system env")
-	//}
 
 	if err := cleanenv.ReadEnv(&cfg); err != nil {
 		return nil, err
@@ -31,12 +31,22 @@ func New() (*Config, error) {
 	return &cfg, nil
 }
 
-func (c *Config) GetConnStr() string {
+func NewDB() (*PostgresConfig, error) {
+	var cfg PostgresConfig
+
+	if err := cleanenv.ReadEnv(&cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+func (c *PostgresConfig) GetConnStr() string {
 	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
-		c.PostgresUser,
-		c.PostgresPass,
-		c.PostgresHost,
-		c.PostgresPort,
-		c.PostgresDB,
+		c.Username,
+		c.Password,
+		c.Host,
+		c.Port,
+		c.Database,
 	)
 }

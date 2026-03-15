@@ -10,7 +10,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	errs "github.com/platonso/hrmate/internal/errors"
 	authdto "github.com/platonso/hrmate/internal/handler/auth/dto"
-	errdto "github.com/platonso/hrmate/internal/handler/httpapi/dto"
+	errdto "github.com/platonso/hrmate/internal/handler/middleware/dto"
 )
 
 type Service interface {

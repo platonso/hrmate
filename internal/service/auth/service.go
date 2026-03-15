@@ -12,22 +12,26 @@ import (
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
 	"github.com/platonso/hrmate/internal/handler/auth/dto"
-	"github.com/platonso/hrmate/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 
+type Repository interface {
+	Create(ctx context.Context, user *domain.User) error
+	FindByEmail(ctx context.Context, email string) (*domain.User, error)
+	FindAllByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
+}
 type Service struct {
-	userRepo  repository.User
+	repo      Repository
 	jwtSecret string
 }
 
-func NewService(userRepo repository.User) *Service {
-	return &Service{userRepo: userRepo}
+func NewService(repo Repository) *Service {
+	return &Service{repo: repo}
 }
 
 func (s *Service) ImplementAdmin(ctx context.Context) error {
 
-	admin, err := s.userRepo.FindAllByRole(ctx, domain.RoleAdmin)
+	admin, err := s.repo.FindAllByRole(ctx, domain.RoleAdmin)
 	if err != nil {
 		return fmt.Errorf("failed to find admin")
 	}
@@ -52,7 +56,7 @@ func (s *Service) ImplementAdmin(ctx context.Context) error {
 	adminUser := domain.NewUser(
 		domain.RoleAdmin,
 		"Super",
-		"User",
+		"UserRepository",
 		"Administrator",
 		email,
 		string(hashedPassword),
@@ -60,7 +64,7 @@ func (s *Service) ImplementAdmin(ctx context.Context) error {
 
 	adminUser.ChangeStatus(true)
 
-	if err := s.userRepo.Create(ctx, &adminUser); err != nil {
+	if err := s.repo.Create(ctx, &adminUser); err != nil {
 		return fmt.Errorf("failed to create admin: %w", err)
 	}
 
@@ -88,7 +92,7 @@ func (s *Service) Register(ctx context.Context, userDTO *dto.RegisterRequest) (s
 		user.ChangeStatus(true)
 	}
 
-	if err := s.userRepo.Create(ctx, &user); err != nil {
+	if err := s.repo.Create(ctx, &user); err != nil {
 		return "", fmt.Errorf("create user: %w", err)
 	}
 
@@ -101,7 +105,7 @@ func (s *Service) Register(ctx context.Context, userDTO *dto.RegisterRequest) (s
 }
 
 func (s *Service) Login(ctx context.Context, userDTO *dto.LoginRequest) (string, error) {
-	user, err := s.userRepo.FindByEmail(ctx, userDTO.Email)
+	user, err := s.repo.FindByEmail(ctx, userDTO.Email)
 	if err != nil {
 		if errors.Is(err, errs.ErrUserNotFound) {
 			return "", errs.ErrInvalidCredentials

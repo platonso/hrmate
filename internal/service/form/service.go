@@ -9,18 +9,27 @@ import (
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
 	"github.com/platonso/hrmate/internal/handler/form/dto"
-	"github.com/platonso/hrmate/internal/repository"
 )
 
-type Service struct {
-	formRepo repository.Form
-	userRepo repository.User
+type Repository interface {
+	Create(ctx context.Context, form *domain.Form) error
+	FindByFormID(ctx context.Context, formId uuid.UUID) (*domain.Form, error)
+	FindByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Form, error)
+	FindByUserIDWithUser(ctx context.Context, userID uuid.UUID) ([]dto.FormsWithUserResponse, error)
+	FindAllWithUsers(ctx context.Context) ([]dto.FormsWithUserResponse, error)
+	Update(ctx context.Context, form *domain.Form) error
 }
 
-func NewService(
-	formRepo repository.Form,
-	userRepo repository.User,
-) *Service {
+type UserRepository interface {
+	FindByUserID(ctx context.Context, userId uuid.UUID) (*domain.User, error)
+}
+
+type Service struct {
+	formRepo Repository
+	userRepo UserRepository
+}
+
+func NewService(formRepo Repository, userRepo UserRepository) *Service {
 	return &Service{
 		formRepo: formRepo,
 		userRepo: userRepo,
@@ -45,7 +54,7 @@ func (s *Service) Create(ctx context.Context, formDTO *dto.FormCreateRequest, us
 
 func (s *Service) GetForm(ctx context.Context, formID, currentUserID uuid.UUID) (*dto.FormWithUserResponse, error) {
 
-	currentUser, err := s.userRepo.FindByUserId(ctx, currentUserID)
+	currentUser, err := s.userRepo.FindByUserID(ctx, currentUserID)
 	if err != nil {
 		return nil, errs.ErrUserNotFound
 	}
@@ -58,7 +67,7 @@ func (s *Service) GetForm(ctx context.Context, formID, currentUserID uuid.UUID) 
 		return nil, fmt.Errorf("find form: %w", err)
 	}
 
-	author, err := s.userRepo.FindByUserId(ctx, form.UserID)
+	author, err := s.userRepo.FindByUserID(ctx, form.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("find userId: %w", err)
 	}
@@ -81,7 +90,7 @@ func (s *Service) GetForm(ctx context.Context, formID, currentUserID uuid.UUID) 
 }
 
 func (s *Service) GetAllForms(ctx context.Context, currentUserID uuid.UUID) ([]dto.FormsWithUserResponse, error) {
-	currentUser, err := s.userRepo.FindByUserId(ctx, currentUserID)
+	currentUser, err := s.userRepo.FindByUserID(ctx, currentUserID)
 	if err != nil {
 		return nil, errs.ErrUserNotFound
 	}

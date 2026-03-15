@@ -6,38 +6,42 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
 	"github.com/platonso/hrmate/internal/domain"
-	auth2 "github.com/platonso/hrmate/internal/handler/auth"
-	form2 "github.com/platonso/hrmate/internal/handler/form"
-	"github.com/platonso/hrmate/internal/handler/httpapi"
-	user2 "github.com/platonso/hrmate/internal/handler/user"
-	"github.com/platonso/hrmate/internal/service/auth"
-	"github.com/platonso/hrmate/internal/service/form"
-	"github.com/platonso/hrmate/internal/service/user"
+	"github.com/platonso/hrmate/internal/handler/auth"
+	"github.com/platonso/hrmate/internal/handler/form"
+	"github.com/platonso/hrmate/internal/handler/middleware"
+	"github.com/platonso/hrmate/internal/handler/user"
 )
 
-type Router struct {
-	handlerAuth *auth2.Handler
-	handlerForm *form2.Handler
-	handlerUser *user2.Handler
-	middleware  *httpapi.AuthMiddleware
+type AuthProvider interface {
+	auth.Service
+	middleware.AuthService
 }
 
-func NewRouter(
-	authService *auth.Service,
-	userService *user.Service,
-	formService *form.Service,
+type UserProvider interface {
+	user.Service
+	middleware.UserService
+}
+
+type Router struct {
+	handlerAuth *auth.Handler
+	handlerUser *user.Handler
+	handlerForm *form.Handler
+	middleware  *middleware.Auth
+}
+
+func NewRouter(authSvc AuthProvider, userSvc UserProvider, formSvc form.Service,
 ) *Router {
 	v := validator.New()
 
-	authMiddleware := &httpapi.AuthMiddleware{
-		AuthSvc: authService,
-		UserSvc: userService,
+	authMiddleware := &middleware.Auth{
+		AuthSvc: authSvc,
+		UserSvc: userSvc,
 	}
 
 	return &Router{
-		handlerAuth: auth2.NewHandler(authService, v),
-		handlerUser: user2.NewHandler(userService, v),
-		handlerForm: form2.NewHandler(formService, v),
+		handlerAuth: auth.NewHandler(authSvc, v),
+		handlerUser: user.NewHandler(userSvc, v),
+		handlerForm: form.NewHandler(formSvc, v),
 		middleware:  authMiddleware,
 	}
 }

@@ -6,14 +6,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/platonso/hrmate/internal/repository"
 	"github.com/platonso/hrmate/internal/repository/postgres/form"
 	"github.com/platonso/hrmate/internal/repository/postgres/user"
 )
 
 type Repository struct {
-	Users repository.User
-	Forms repository.Form
+	Users user.Repository
+	Forms form.Repository
 	db    *pgxpool.Pool
 }
 
@@ -24,8 +23,8 @@ func NewRepository(ctx context.Context, connStr string) (*Repository, error) {
 	}
 
 	return &Repository{
-		Users: user.NewRepository(db),
-		Forms: form.NewRepository(db),
+		Users: *user.NewRepository(db),
+		Forms: *form.NewRepository(db),
 		db:    db,
 	}, nil
 }

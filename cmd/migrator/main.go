@@ -16,12 +16,12 @@ var command = flag.String("command", "up", "goose command (up, down, status, etc
 
 func main() {
 
-	cfg, err := config.New()
+	cfg, err := config.NewDB()
 	if err != nil {
 		log.Fatalf("Config error: %v", err)
 	}
 
-	if _, err := os.Stat(cfg.MigrationsPath); os.IsNotExist(err) {
+	if _, err := os.Stat(cfg.MigrationDir); os.IsNotExist(err) {
 		log.Fatal("migrations directory does not exist")
 	}
 
@@ -36,7 +36,7 @@ func main() {
 		log.Fatal("error connecting to database: ", err)
 	}
 
-	if err = goose.Run(*command, sqlDB, cfg.MigrationsPath); err != nil {
+	if err = goose.Run(*command, sqlDB, cfg.MigrationDir); err != nil {
 		log.Println("failed to run goose command: ", err)
 		return
 	}

@@ -14,8 +14,8 @@ import (
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
 	formdto "github.com/platonso/hrmate/internal/handler/form/dto"
-	"github.com/platonso/hrmate/internal/handler/httpapi"
-	"github.com/platonso/hrmate/internal/handler/httpapi/dto"
+	"github.com/platonso/hrmate/internal/handler/middleware"
+	"github.com/platonso/hrmate/internal/handler/middleware/dto"
 )
 
 type Service interface {
@@ -51,7 +51,7 @@ func (h *Handler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
 		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("validation failed"))
 	}
 
-	userID, ok := httpapi.GetUserID(ctx)
+	userID, ok := middleware.GetUserID(ctx)
 	if !ok {
 		dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing user ID in context"))
 		return
@@ -79,7 +79,7 @@ func (h *Handler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := httpapi.GetUserID(ctx)
+	userID, _ := middleware.GetUserID(ctx)
 
 	result, err := h.svc.GetForm(ctx, formID, userID)
 	if err != nil {
@@ -103,7 +103,7 @@ func (h *Handler) HandleGetForms(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	userID, _ := httpapi.GetUserID(ctx)
+	userID, _ := middleware.GetUserID(ctx)
 
 	result, err := h.svc.GetAllForms(ctx, userID)
 	if err != nil {

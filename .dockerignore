@@ -1,12 +1,19 @@
-.vscode/
-.idea/
+.idea
+.vscode
+*.swp
+*.swo
 .env
+
+bin
+build
+server
+
 *.log
 .DS_Store
 
-.git/
-.gitignore
 README.md
-Dockerfile
 docker-compose.yml
 **/*_test.go
+
+.git
+.gitignore
