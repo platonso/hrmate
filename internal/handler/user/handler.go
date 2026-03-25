@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-playground/validator/v10"
@@ -20,8 +19,6 @@ import (
 type Service interface {
 	GetUsersByRole(ctx context.Context, requesterRole domain.Role) ([]domain.User, error)
 	UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error)
-	//GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.Username, error)
-	//IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
 }
 
 type Handler struct {
@@ -71,16 +68,13 @@ func (h *Handler) HandleUpdateUserStatus(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	role, ok := middleware.GetUserRole(ctx)
+	role, ok := middleware.GetUserRole(r.Context())
 	if !ok {
 		dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing role"))
 		return
 	}
 
-	users, err := h.svc.GetUsersByRole(ctx, role)
+	users, err := h.svc.GetUsersByRole(r.Context(), role)
 	if err != nil {
 		dto.WriteJSONError(w, http.StatusInternalServerError, err)
 		return

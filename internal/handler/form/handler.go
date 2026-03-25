@@ -16,13 +16,15 @@ import (
 	formdto "github.com/platonso/hrmate/internal/handler/form/dto"
 	"github.com/platonso/hrmate/internal/handler/middleware"
 	"github.com/platonso/hrmate/internal/handler/middleware/dto"
+	"github.com/platonso/hrmate/internal/service/form/model"
 )
 
 type Service interface {
-	Create(ctx context.Context, formDTO *formdto.FormCreateRequest, userID uuid.UUID) (*domain.Form, error)
-	GetForm(ctx context.Context, formID, currentUserID uuid.UUID) (*formdto.FormWithUserResponse, error)
-	GetAllForms(ctx context.Context, currentUserID uuid.UUID) ([]formdto.FormsWithUserResponse, error)
-	Update(ctx context.Context, newStatus *formdto.FormStatusUpdateRequest, formID uuid.UUID) (*domain.Form, error)
+	Create(ctx context.Context, formDTO *model.FormCreateInput, userID uuid.UUID) (*domain.Form, error)
+	GetForm(ctx context.Context, formID, currentUserID uuid.UUID) (*domain.Form, error)
+	//	GetFormsWithUser(ctx context.Context, targetUserID, requesterUserID uuid.UUID) ([]model.FormsWithUser, error)
+	GetFormsWithUsers(ctx context.Context, currentUserID uuid.UUID) ([]model.FormsWithUser, error)
+	Approve(ctx context.Context, formID uuid.UUID, comment string) (*domain.Form, error)
 }
 
 type Handler struct {
@@ -38,9 +40,6 @@ func NewHandler(svc Service, v *validator.Validate) *Handler {
 }
 
 func (h *Handler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
 	var req formdto.FormCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid JSON"))
@@ -49,15 +48,16 @@ func (h *Handler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.validator.Struct(req); err != nil {
 		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("validation failed"))
+		return
 	}
 
-	userID, ok := middleware.GetUserID(ctx)
+	userID, ok := middleware.GetUserID(r.Context())
 	if !ok {
 		dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing user ID in context"))
 		return
 	}
 
-	form, err := h.svc.Create(ctx, &req, userID)
+	form, err := h.svc.Create(r.Context(), formdto.ToFormCreateInput(&req), userID)
 	if err != nil {
 		dto.WriteJSONError(w, http.StatusInternalServerError, err)
 		return
@@ -69,9 +69,6 @@ func (h *Handler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
 	formIdStr := chi.URLParam(r, "id")
 	formID, err := uuid.Parse(formIdStr)
 	if err != nil {
@@ -79,9 +76,9 @@ func (h *Handler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, _ := middleware.GetUserID(ctx)
+	userID, _ := middleware.GetUserID(r.Context())
 
-	result, err := h.svc.GetForm(ctx, formID, userID)
+	form, err := h.svc.GetForm(r.Context(), formID, userID)
 	if err != nil {
 		switch {
 		case errors.Is(err, errs.ErrFormNotFound):
@@ -95,30 +92,27 @@ func (h *Handler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(result)
-
+	_ = json.NewEncoder(w).Encode(form)
 }
 
 func (h *Handler) HandleGetForms(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
+	h.svc.GetForms()
+}
 
-	userID, _ := middleware.GetUserID(ctx)
+func (h *Handler) HandleGetFormsWithUsers(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.GetUserID(r.Context())
 
-	result, err := h.svc.GetAllForms(ctx, userID)
+	forms, err := h.svc.GetFormsWithUsers(r.Context(), userID)
 	if err != nil {
 		dto.WriteJSONError(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(forms)
 }
 
-func (h *Handler) HandleUpdateFormStatus(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
+func (h *Handler) HandleApprove(w http.ResponseWriter, r *http.Request) {
 	formIDStr := chi.URLParam(r, "id")
 	formID, err := uuid.Parse(formIDStr)
 	if err != nil {
@@ -126,7 +120,7 @@ func (h *Handler) HandleUpdateFormStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var req formdto.FormStatusUpdateRequest
+	var req formdto.FormCommentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid JSON"))
 		return
@@ -137,7 +131,7 @@ func (h *Handler) HandleUpdateFormStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	form, err := h.svc.Update(ctx, &req, formID)
+	form, err := h.svc.Approve(r.Context(), formID, req.Comment)
 	if err != nil {
 		switch {
 		case errors.Is(err, errs.ErrFormNotFound):

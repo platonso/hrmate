@@ -1,14 +1,30 @@
 docker-up:
-	docker-compose up -d
-
-docker-build:
-	docker-compose build
-
+	@docker-compose up -d --build
 docker-clean:
-	docker-compose down --rmi local
+	@docker-compose down --rmi local
+
+port-forward:
+	@docker-compose up -d port-forwarder
+port-close:
+	@docker-compose down port-forwarder
+
+migrate-up:
+	@docker-compose run --rm postgres-migrator ./migrator -command=up
+migrate-down:
+	@docker-compose run --rm postgres-migrator ./migrator -command=down
+migrate-status:
+	@docker-compose run --rm postgres-migrator ./migrator -command=status
 
 help:
-	@echo "Available targets:"
-	@echo "  docker-up    - Start docker containers"
-	@echo "  docker-build - Build docker images"
-	@echo "  docker-clean - Clean current docker containers and images"
+	@echo "Docker Management:"
+	@echo "  docker-up         - Start docker containers"
+	@echo "  docker-clean      - Clean current docker containers and images"
+	@echo ""
+	@echo "Port Forwarding:"
+	@echo "  make port-forward - Start PostgreSQL proxy"
+	@echo "  make port-close   - Stop PostgreSQL proxy"
+	@echo ""
+	@echo "Database Migrations:"
+	@echo "  migrate-up        - Apply all pending migrations"
+	@echo "  migrate-down      - Rollback migration"
+	@echo "  migrate-status    - Show migration status"

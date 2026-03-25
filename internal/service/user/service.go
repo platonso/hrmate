@@ -11,7 +11,7 @@ import (
 
 type Repository interface {
 	Update(ctx context.Context, user *domain.User) error
-	FindAllByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
+	FindByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
 	FindByUserID(ctx context.Context, userId uuid.UUID) (*domain.User, error)
 	IsActive(ctx context.Context, userID uuid.UUID) (bool, error)
 }
@@ -59,7 +59,7 @@ func (s *Service) GetUsersByRole(ctx context.Context, requesterRole domain.Role)
 		return nil, errors.ErrForbidden
 	}
 
-	users, err := s.repo.FindAllByRole(ctx, rolesToQuery...)
+	users, err := s.repo.FindByRole(ctx, rolesToQuery...)
 	if err != nil {
 		return nil, fmt.Errorf("find users by role: %w", err)
 	}

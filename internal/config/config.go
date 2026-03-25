@@ -17,8 +17,10 @@ type PostgresConfig struct {
 
 type Config struct {
 	PostgresConfig
-	HTTPPort  string `env:"HTTP_PORT" env-default:"8080"`
-	JWTSecret string `env:"JWT_SECRET" env-required:"true"`
+	HTTPPort      string `env:"HTTP_PORT" env-default:"8080"`
+	JWTSecret     string `env:"JWT_SECRET" env-required:"true"`
+	AdminEmail    string `env:"ADMIN_EMAIL" env-required:"true"`
+	AdminPassword string `env:"ADMIN_PASSWORD" env-required:"true"`
 }
 
 func New() (*Config, error) {

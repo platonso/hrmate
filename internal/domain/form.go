@@ -14,17 +14,18 @@ const (
 )
 
 type Form struct {
-	ID          uuid.UUID `json:"id"          db:"id"`
-	UserID      uuid.UUID `json:"userId"      db:"user_id"`
-	Title       string    `json:"title"       db:"title"`
-	Description string    `json:"description" db:"description"`
+	ID          uuid.UUID `json:"id"`
+	UserID      uuid.UUID `json:"userId"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
 
-	StartDate *time.Time `json:"startDate"   db:"start_date"`
-	EndDate   *time.Time `json:"endDate"     db:"end_date"`
+	StartDate *time.Time `json:"startDate"`
+	EndDate   *time.Time `json:"endDate"`
 
-	CreatedAt  time.Time  `json:"createdAt"   db:"created_at"`
-	ApprovedAt *time.Time `json:"approvedAt"  db:"approved_at"`
-	Status     FormStatus `json:"status"      db:"status"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ApprovedAt *time.Time `json:"approvedAt"`
+	Status     FormStatus `json:"status"`
+	Comment    *string    `json:"comment"`
 }
 
 func NewForm(userID uuid.UUID, title, description string, startDate, endDate *time.Time) Form {
@@ -41,8 +42,9 @@ func NewForm(userID uuid.UUID, title, description string, startDate, endDate *ti
 	}
 }
 
-func (f *Form) UpdateStatus(newStatus FormStatus) {
+func (f *Form) ApproveForm(comment string) {
 	approveTime := time.Now()
-	f.Status = newStatus
 	f.ApprovedAt = &approveTime
+	f.Status = StatusApproved
+	f.Comment = &comment
 }

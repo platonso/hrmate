@@ -35,7 +35,7 @@ func New(ctx context.Context, cfg *config.Config) (*Application, error) {
 	authService := auth.NewService(&postgresRepo.Users)
 	formService := form.NewService(&postgresRepo.Forms, &postgresRepo.Users)
 
-	if err := authService.ImplementAdmin(ctx); err != nil {
+	if err := authService.ImplementAdmin(ctx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		return nil, fmt.Errorf("failed to implement admin: %w", err)
 	}
 

@@ -1,5 +1,9 @@
 .vscode/
 .idea/
+out/
 .env
 *.log
 .DS_Store
+
+/server
+/migrator

@@ -5,17 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/go-playground/validator/v10"
 	errs "github.com/platonso/hrmate/internal/errors"
 	authdto "github.com/platonso/hrmate/internal/handler/auth/dto"
 	errdto "github.com/platonso/hrmate/internal/handler/middleware/dto"
+	"github.com/platonso/hrmate/internal/service/auth/model"
 )
 
 type Service interface {
-	Register(ctx context.Context, userDTO *authdto.RegisterRequest) (string, error)
-	Login(ctx context.Context, userDTO *authdto.LoginRequest) (string, error)
+	Register(ctx context.Context, registerInput *model.RegisterInput) (string, error)
+	Login(ctx context.Context, email, password string) (string, error)
 }
 
 type Handler struct {
@@ -42,7 +42,7 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.svc.Register(r.Context(), &req)
+	token, err := h.svc.Register(r.Context(), authdto.ToRegisterInput(&req))
 	if err != nil {
 		errdto.WriteJSONError(w, http.StatusConflict, errs.ErrUserAlreadyExists)
 		return
@@ -54,9 +54,6 @@ func (h *Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
 	var req authdto.LoginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -69,7 +66,7 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.svc.Login(ctx, &req)
+	token, err := h.svc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, errs.ErrInvalidCredentials) {
 			errdto.WriteJSONError(w, http.StatusUnauthorized, err)

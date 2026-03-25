@@ -4,9 +4,8 @@
 *.swo
 .env
 
-bin
-build
-server
+/server
+/migrator
 
 *.log
 .DS_Store

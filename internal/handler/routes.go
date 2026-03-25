@@ -74,9 +74,11 @@ func (rt *Router) Routes() http.Handler {
 			rt.middleware.RequireActiveStatus,
 		).Group(func(r chi.Router) {
 			r.Get("/users", rt.handlerUser.HandleGetUsers)
-			r.Get("/forms", rt.handlerForm.HandleGetForms)
+			r.Get("/users/{id}/forms", rt.handlerForm.HandleGetFormsWithUser)
+
+			r.Get("/forms", rt.handlerForm.HandleGetFormsWithUsers)
 			r.Get("/forms/{id}", rt.handlerForm.HandleGetForm)
-			r.Patch("/forms/{id}/status", rt.handlerForm.HandleUpdateFormStatus)
+			r.Patch("/forms/{id}/approve", rt.handlerForm.HandleApprove)
 		})
 	})
 

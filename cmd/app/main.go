@@ -17,17 +17,17 @@ func main() {
 
 	cfg, err := config.New()
 	if err != nil {
-		log.Fatalf("Config error: %v", err)
+		log.Fatalf("config error: %v", err)
 	}
 
 	application, err := app.New(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to init app: %v", err)
+		log.Fatalf("failed to init app: %v", err)
 	}
 	defer application.Close()
 
 	if err := application.StartServer(); err != nil {
-		log.Fatalf("Server error: %v", err)
+		log.Fatalf("start server error: %v", err)
 	}
 
 	//ctx, cancel := context.WithCancel(context.Background())

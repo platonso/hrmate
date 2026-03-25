@@ -13,18 +13,18 @@ const (
 )
 
 type User struct {
-	ID             uuid.UUID `json:"id" db:"id"`
-	Role           Role      `json:"role,omitempty" db:"user_role"`
-	FirstName      string    `json:"firstName" db:"first_name"`
-	LastName       string    `json:"lastName" db:"last_name"`
-	Position       string    `json:"position" db:"position"`
-	Email          string    `json:"email" db:"email"`
-	HashedPassword string    `json:"-" db:"hashed_password"`
-	IsActive       bool      `json:"isActive" db:"is_active"`
+	ID             uuid.UUID `json:"id"`
+	Role           Role      `json:"role,omitempty"`
+	FirstName      string    `json:"firstName"`
+	LastName       string    `json:"lastName"`
+	Position       string    `json:"position"`
+	Email          string    `json:"email"`
+	HashedPassword string    `json:"-"`
+	IsActive       bool      `json:"isActive"`
 }
 
 func NewUser(role Role, firstName, lastName, position, email, password string) User {
-	return User{
+	user := User{
 		ID:             uuid.New(),
 		Role:           role,
 		FirstName:      firstName,
@@ -34,6 +34,12 @@ func NewUser(role Role, firstName, lastName, position, email, password string) U
 		HashedPassword: password,
 		IsActive:       false,
 	}
+
+	if user.Role == RoleEmployee {
+		user.ChangeStatus(true)
+	}
+
+	return user
 }
 
 func (u *User) ChangeNames(newFirstName, newLastName string) {

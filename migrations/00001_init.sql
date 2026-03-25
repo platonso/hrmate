@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS forms (
                                      end_date TIMESTAMPTZ,
                                      created_at TIMESTAMPTZ NOT NULL,
                                      approved_at TIMESTAMPTZ,
-                                     status TEXT NOT NULL
+                                     status TEXT NOT NULL,
+                                     comment TEXT
 );
 -- +goose StatementEnd
 

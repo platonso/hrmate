@@ -5,20 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
-	"github.com/platonso/hrmate/internal/handler/auth/dto"
+	"github.com/platonso/hrmate/internal/service/auth/model"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Repository interface {
 	Create(ctx context.Context, user *domain.User) error
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
-	FindAllByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
+	FindByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
 }
 type Service struct {
 	repo      Repository
@@ -29,9 +28,9 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) ImplementAdmin(ctx context.Context) error {
+func (s *Service) ImplementAdmin(ctx context.Context, email, password string) error {
 
-	admin, err := s.repo.FindAllByRole(ctx, domain.RoleAdmin)
+	admin, err := s.repo.FindByRole(ctx, domain.RoleAdmin)
 	if err != nil {
 		return fmt.Errorf("failed to find admin")
 	}
@@ -40,9 +39,6 @@ func (s *Service) ImplementAdmin(ctx context.Context) error {
 		log.Println("the existing admin is used")
 		return nil
 	}
-
-	email := os.Getenv("ADMIN_EMAIL")
-	password := os.Getenv("ADMIN_PASSWORD")
 
 	if email == "" || password == "" {
 		return errors.New("ADMIN_EMAIL and ADMIN_PASSWORD must be set in environment")
@@ -70,27 +66,22 @@ func (s *Service) ImplementAdmin(ctx context.Context) error {
 
 	log.Println("admin has been created successfully")
 	return nil
-
 }
 
-func (s *Service) Register(ctx context.Context, userDTO *dto.RegisterRequest) (string, error) {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(userDTO.Password), bcrypt.DefaultCost)
+func (s *Service) Register(ctx context.Context, registerInput *model.RegisterInput) (string, error) {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(registerInput.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 
 	user := domain.NewUser(
-		userDTO.Role,
-		userDTO.FirstName,
-		userDTO.LastName,
-		userDTO.Position,
-		userDTO.Email,
+		registerInput.Role,
+		registerInput.FirstName,
+		registerInput.LastName,
+		registerInput.Position,
+		registerInput.Email,
 		string(hashedPassword),
 	)
-
-	if user.Role == domain.RoleEmployee {
-		user.ChangeStatus(true)
-	}
 
 	if err := s.repo.Create(ctx, &user); err != nil {
 		return "", fmt.Errorf("create user: %w", err)
@@ -104,8 +95,8 @@ func (s *Service) Register(ctx context.Context, userDTO *dto.RegisterRequest) (s
 	return token, nil
 }
 
-func (s *Service) Login(ctx context.Context, userDTO *dto.LoginRequest) (string, error) {
-	user, err := s.repo.FindByEmail(ctx, userDTO.Email)
+func (s *Service) Login(ctx context.Context, email, password string) (string, error) {
+	user, err := s.repo.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, errs.ErrUserNotFound) {
 			return "", errs.ErrInvalidCredentials
@@ -113,7 +104,7 @@ func (s *Service) Login(ctx context.Context, userDTO *dto.LoginRequest) (string,
 		return "", fmt.Errorf("find user by email: %w", err)
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(userDTO.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(password)); err != nil {
 		return "", errs.ErrInvalidCredentials
 	}
 
