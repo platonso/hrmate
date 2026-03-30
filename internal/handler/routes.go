@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
 	"github.com/go-playground/validator/v10"
 	"github.com/platonso/hrmate/internal/domain"
 	"github.com/platonso/hrmate/internal/handler/auth"
@@ -49,11 +50,22 @@ func NewRouter(authSvc AuthProvider, userSvc UserProvider, formSvc form.Service,
 func (rt *Router) Routes() http.Handler {
 	r := chi.NewRouter()
 
-	// Authentication
-	r.Post("/auth/register", rt.handlerAuth.HandleRegister)
-	r.Post("/auth/login", rt.handlerAuth.HandleLogin)
+	// CORS middleware ==================================================================
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"}, // Allow all origins for testing
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
+	// ===================================================================================
 
-	// Forms (Employee)
+	// Authentication
+	r.Post("/register", rt.handlerAuth.HandleRegister)
+	r.Post("/login", rt.handlerAuth.HandleLogin)
+
+	// Employee
 	r.Route("/forms", func(r chi.Router) {
 		r.With(
 			rt.middleware.AuthMiddleware,
@@ -66,7 +78,7 @@ func (rt *Router) Routes() http.Handler {
 		})
 	})
 
-	// HR routes
+	// HR
 	r.Route("/hr", func(r chi.Router) {
 		r.With(
 			rt.middleware.AuthMiddleware,
@@ -74,11 +86,11 @@ func (rt *Router) Routes() http.Handler {
 			rt.middleware.RequireActiveStatus,
 		).Group(func(r chi.Router) {
 			r.Get("/users", rt.handlerUser.HandleGetUsers)
-			r.Get("/users/{id}/forms", rt.handlerForm.HandleGetFormsWithUser)
 
 			r.Get("/forms", rt.handlerForm.HandleGetFormsWithUsers)
 			r.Get("/forms/{id}", rt.handlerForm.HandleGetForm)
 			r.Patch("/forms/{id}/approve", rt.handlerForm.HandleApprove)
+			r.Patch("/forms/{id}/reject", rt.handlerForm.HandleReject)
 		})
 	})
 
@@ -90,7 +102,8 @@ func (rt *Router) Routes() http.Handler {
 			rt.middleware.RequireActiveStatus,
 		).Group(func(r chi.Router) {
 			r.Get("/users", rt.handlerUser.HandleGetUsers)
-			r.Patch("/users/{id}/status", rt.handlerUser.HandleUpdateUserStatus)
+			r.Patch("/users/{id}/activate", rt.handlerUser.HandleActivate)
+			r.Patch("/users/{id}/deactivate", rt.handlerUser.HandleDeactivate)
 		})
 	})
 

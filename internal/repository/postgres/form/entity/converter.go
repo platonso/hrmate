@@ -34,13 +34,13 @@ func ToFormRecord(f domain.Form) FormRecord {
 		record.EndDate = sql.NullTime{Valid: false}
 	}
 
-	if f.ApprovedAt != nil {
-		record.ApprovedAt = sql.NullTime{
-			Time:  *f.ApprovedAt,
+	if f.ReviewedAt != nil {
+		record.ReviewedAt = sql.NullTime{
+			Time:  *f.ReviewedAt,
 			Valid: true,
 		}
 	} else {
-		record.ApprovedAt = sql.NullTime{Valid: false}
+		record.ReviewedAt = sql.NullTime{Valid: false}
 	}
 
 	if f.Comment != nil {
@@ -73,8 +73,8 @@ func ToDomainForm(record FormRecord) domain.Form {
 		form.EndDate = &record.EndDate.Time
 	}
 
-	if record.ApprovedAt.Valid {
-		form.ApprovedAt = &record.ApprovedAt.Time
+	if record.ReviewedAt.Valid {
+		form.ReviewedAt = &record.ReviewedAt.Time
 	}
 
 	if record.Comment.Valid {
@@ -89,10 +89,9 @@ func ToDomainForms(records []FormRecord) []domain.Form {
 		return []domain.Form{}
 	}
 
-	forms := make([]domain.Form, 0, len(records))
-	for _, r := range records {
-		form := ToDomainForm(r)
-		forms = append(forms, form)
+	forms := make([]domain.Form, len(records))
+	for i := range records {
+		forms[i] = ToDomainForm(records[i])
 	}
 	return forms
 }

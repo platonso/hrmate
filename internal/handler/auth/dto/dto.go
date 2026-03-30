@@ -1,9 +1,5 @@
 package dto
 
-type UserStatusUpdateRequest struct {
-	Status bool `json:"status"`
-}
-
 type RegisterRequest struct {
 	FirstName string `json:"firstName" validate:"required,min=2"`
 	LastName  string `json:"lastName" validate:"required,min=2"`

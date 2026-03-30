@@ -17,7 +17,7 @@ type FormRecord struct {
 	EndDate   sql.NullTime `db:"end_date"`
 
 	CreatedAt  time.Time      `db:"created_at"`
-	ApprovedAt sql.NullTime   `db:"approved_at"`
+	ReviewedAt sql.NullTime   `db:"reviewed_at"`
 	Status     string         `db:"status"`
 	Comment    sql.NullString `db:"comment"`
 }

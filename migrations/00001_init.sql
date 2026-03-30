@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS forms (
                                      start_date TIMESTAMPTZ,
                                      end_date TIMESTAMPTZ,
                                      created_at TIMESTAMPTZ NOT NULL,
-                                     approved_at TIMESTAMPTZ,
+                                     reviewed_at TIMESTAMPTZ,
                                      status TEXT NOT NULL,
                                      comment TEXT
 );

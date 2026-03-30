@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	errs "github.com/platonso/hrmate/internal/errors"
 )
 
 type FormStatus string
@@ -11,21 +12,22 @@ type FormStatus string
 const (
 	StatusPending  FormStatus = "pending"
 	StatusApproved FormStatus = "approved"
+	StatusRejected FormStatus = "rejected"
 )
 
 type Form struct {
-	ID          uuid.UUID `json:"id"`
-	UserID      uuid.UUID `json:"userId"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	Title       string
+	Description string
 
-	StartDate *time.Time `json:"startDate"`
-	EndDate   *time.Time `json:"endDate"`
+	StartDate *time.Time
+	EndDate   *time.Time
 
-	CreatedAt  time.Time  `json:"createdAt"`
-	ApprovedAt *time.Time `json:"approvedAt"`
-	Status     FormStatus `json:"status"`
-	Comment    *string    `json:"comment"`
+	CreatedAt  time.Time
+	ReviewedAt *time.Time
+	Status     FormStatus
+	Comment    *string
 }
 
 func NewForm(userID uuid.UUID, title, description string, startDate, endDate *time.Time) Form {
@@ -37,14 +39,49 @@ func NewForm(userID uuid.UUID, title, description string, startDate, endDate *ti
 		StartDate:   startDate,
 		EndDate:     endDate,
 		CreatedAt:   time.Now(),
-		ApprovedAt:  nil,
+		ReviewedAt:  nil,
 		Status:      StatusPending,
 	}
 }
 
-func (f *Form) ApproveForm(comment string) {
+func (f *Form) ApproveForm(comment string) (bool, error) {
+	if f.Status == StatusApproved {
+		return false, nil
+	}
+
+	if f.Status == StatusRejected {
+		return false, errs.ErrFormAlreadyRejected
+	}
+
+	if f.Status != StatusPending {
+		return false, errs.ErrFormInvalidStatus
+	}
+
 	approveTime := time.Now()
-	f.ApprovedAt = &approveTime
+	f.ReviewedAt = &approveTime
 	f.Status = StatusApproved
 	f.Comment = &comment
+
+	return true, nil
+}
+
+func (f *Form) RejectForm(comment string) (bool, error) {
+	if f.Status == StatusRejected {
+		return false, nil
+	}
+
+	if f.Status == StatusApproved {
+		return false, errs.ErrFormAlreadyApproved
+	}
+
+	if f.Status != StatusPending {
+		return false, errs.ErrFormInvalidStatus
+	}
+
+	rejectTime := time.Now()
+	f.ReviewedAt = &rejectTime
+	f.Status = StatusRejected
+	f.Comment = &comment
+
+	return true, nil
 }

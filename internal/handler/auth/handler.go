@@ -68,9 +68,12 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.svc.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
-		if errors.Is(err, errs.ErrInvalidCredentials) {
+		switch {
+		case errors.Is(err, errs.ErrInvalidCredentials):
 			errdto.WriteJSONError(w, http.StatusUnauthorized, err)
-		} else {
+		case errors.Is(err, errs.ErrUserNotActive):
+			errdto.WriteJSONError(w, http.StatusForbidden, err)
+		default:
 			errdto.WriteJSONError(w, http.StatusInternalServerError, err)
 		}
 		return

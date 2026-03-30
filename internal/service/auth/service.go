@@ -52,13 +52,13 @@ func (s *Service) ImplementAdmin(ctx context.Context, email, password string) er
 	adminUser := domain.NewUser(
 		domain.RoleAdmin,
 		"Super",
-		"UserRepository",
+		"User",
 		"Administrator",
 		email,
 		string(hashedPassword),
 	)
 
-	adminUser.ChangeStatus(true)
+	adminUser.Activate()
 
 	if err := s.repo.Create(ctx, &adminUser); err != nil {
 		return fmt.Errorf("failed to create admin: %w", err)
@@ -106,6 +106,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, er
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(password)); err != nil {
 		return "", errs.ErrInvalidCredentials
+	}
+
+	if !user.IsActive {
+		return "", errs.ErrUserNotActive
 	}
 
 	token, err := generateJWT(user.ID, user.Role, s.jwtSecret)

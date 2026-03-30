@@ -35,10 +35,9 @@ func ToDomainUsers(records []UserRecord) []domain.User {
 		return []domain.User{}
 	}
 
-	users := make([]domain.User, 0, len(records))
-	for _, rec := range records {
-		user := ToDomainUser(rec)
-		users = append(users, user)
+	users := make([]domain.User, len(records))
+	for i := range records {
+		users[i] = ToDomainUser(records[i])
 	}
 	return users
 }

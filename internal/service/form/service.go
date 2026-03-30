@@ -16,6 +16,7 @@ type Repository interface {
 	FindAll(ctx context.Context) ([]domain.Form, error)
 	FindByFormID(ctx context.Context, formId uuid.UUID) (*domain.Form, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Form, error)
+	FindByFilter(ctx context.Context, filter *Filter) ([]domain.Form, error)
 	Update(ctx context.Context, form *domain.Form) error
 }
 
@@ -52,13 +53,7 @@ func (s *Service) Create(ctx context.Context, formInput *model.FormCreateInput, 
 	return &form, nil
 }
 
-func (s *Service) GetForm(ctx context.Context, formID, currentUserID uuid.UUID) (*domain.Form, error) {
-
-	currentUser, err := s.userRepo.FindByUserID(ctx, currentUserID)
-	if err != nil {
-		return nil, errs.ErrUserNotFound
-	}
-
+func (s *Service) GetForm(ctx context.Context, formID uuid.UUID, requesterID uuid.UUID, requesterRole domain.Role) (*domain.Form, error) {
 	form, err := s.formRepo.FindByFormID(ctx, formID)
 	if err != nil {
 		if errors.Is(err, errs.ErrFormNotFound) {
@@ -67,149 +62,129 @@ func (s *Service) GetForm(ctx context.Context, formID, currentUserID uuid.UUID) 
 		return nil, fmt.Errorf("find form: %w", err)
 	}
 
-	switch currentUser.Role {
+	switch requesterRole {
 	case domain.RoleAdmin, domain.RoleHR:
 		return form, nil
 
 	case domain.RoleEmployee:
-		if form.UserID == currentUser.ID {
+		if form.UserID == requesterID {
 			return form, nil
 		}
 	}
 	return nil, errs.ErrForbidden
 }
 
-func (s *Service) GetForms(ctx context.Context, targetUserID, requesterUserID uuid.UUID) ([]domain.Form, error) {
-	//requester, err := s.userRepo.FindByUserID(ctx, requesterUserID)
-	//if err != nil {
-	//	return nil, errs.ErrUserNotFound
-	//}
-	
-	targetUser, err := s.userRepo.FindByUserID(ctx, targetUserID)
-	if err != nil {
-		return nil, errs.ErrUserNotFound
+// GetForms retrieves forms based on filter with access control
+// For Employee: can only access own forms
+// For HR/Admin: can access all forms with optional filtering
+func (s *Service) GetForms(ctx context.Context, filter *Filter, requesterID uuid.UUID, requesterRole domain.Role) ([]domain.Form, error) {
+	// Access control logic
+	switch requesterRole {
+	case domain.RoleEmployee:
+		// Employee can only access own forms
+		if filter.UserID != nil && *filter.UserID != requesterID {
+			return nil, errs.ErrForbidden
+		}
+		// Force filter to requester's ID
+		filter.UserID = &requesterID
+
+	case domain.RoleHR, domain.RoleAdmin:
+		// HR/Admin can access any forms
+		// If user_id is specified, validate user exists
+		if filter.UserID != nil {
+			_, err := s.userRepo.FindByUserID(ctx, *filter.UserID)
+			if err != nil {
+				return nil, errs.ErrUserNotFound
+			}
+		}
+	default:
+		return nil, errs.ErrForbidden
 	}
 
-	forms, err := s.formRepo.FindByUserID(ctx, targetUserID)
+	// Validate status if provided
+	if err := filter.ValidateStatus(); err != nil {
+		return nil, err
+	}
+
+	// Fetch forms from repository
+	forms, err := s.formRepo.FindByFilter(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find forms for user %s: %w", targetUserID, err)
+		return nil, fmt.Errorf("failed to find forms: %w", err)
+	}
+
+	// Return empty array if no results (not an error)
+	if len(forms) == 0 {
+		return []domain.Form{}, nil
+	}
+
+	return forms, nil
+}
+
+func (s *Service) GetFormsWithUsers(ctx context.Context, filter *Filter, requesterRole domain.Role) ([]model.FormsWithUser, error) {
+	if requesterRole == domain.RoleEmployee {
+		return nil, errs.ErrForbidden
+	}
+
+	// If user_id is specified, validate user exists
+	if filter.UserID != nil {
+		_, err := s.userRepo.FindByUserID(ctx, *filter.UserID)
+		if err != nil {
+			return nil, errs.ErrUserNotFound
+		}
+	}
+
+	// Validate status if provided
+	if err := filter.ValidateStatus(); err != nil {
+		return nil, err
+	}
+
+	// Fetch forms with filter
+	forms, err := s.formRepo.FindByFilter(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find forms: %w", err)
 	}
 
 	if len(forms) == 0 {
 		return []model.FormsWithUser{}, nil
 	}
 
-	result := []model.FormsWithUser{
-		{
-			User:  *targetUser,
-			Forms: forms,
-		},
+	// Collect unique user IDs
+	userIDsMap := make(map[uuid.UUID]struct{})
+	for _, form := range forms {
+		userIDsMap[form.UserID] = struct{}{}
 	}
 
-	return result, nil
-}
+	userIDs := make([]uuid.UUID, 0, len(userIDsMap))
+	for userID := range userIDsMap {
+		userIDs = append(userIDs, userID)
+	}
 
-//func (s *Service) GetFormsWithUser(ctx context.Context, targetUserID, requesterUserID uuid.UUID) ([]model.FormsWithUser, error) {
-//	requester, err := s.userRepo.FindByUserID(ctx, requesterUserID)
-//	if err != nil {
-//		return nil, errs.ErrUserNotFound
-//	}
-//
-//	if requester.Role != domain.RoleHR && requester.Role != domain.RoleAdmin {
-//		return nil, errs.ErrForbidden
-//	}
-//
-//	targetUser, err := s.userRepo.FindByUserID(ctx, targetUserID)
-//	if err != nil {
-//		return nil, errs.ErrUserNotFound
-//	}
-//
-//	forms, err := s.formRepo.FindByUserID(ctx, targetUserID)
-//	if err != nil {
-//		return nil, fmt.Errorf("failed to find forms for user %s: %w", targetUserID, err)
-//	}
-//
-//	if len(forms) == 0 {
-//		return []model.FormsWithUser{}, nil
-//	}
-//
-//	result := []model.FormsWithUser{
-//		{
-//			User:  *targetUser,
-//			Forms: forms,
-//		},
-//	}
-//
-//	return result, nil
-//}
-
-func (s *Service) GetFormsWithUsers(ctx context.Context, requesterUserID uuid.UUID) ([]model.FormsWithUser, error) {
-	// Get current user
-	currentUser, err := s.userRepo.FindByUserID(ctx, requesterUserID)
+	// Fetch users
+	users, err := s.userRepo.FindByUserIDs(ctx, userIDs)
 	if err != nil {
-		return nil, errs.ErrUserNotFound
+		return nil, fmt.Errorf("failed to find users: %w", err)
 	}
 
-	var forms []domain.Form
-	var result []model.FormsWithUser
+	// Create user map
+	userMap := make(map[uuid.UUID]domain.User)
+	for _, user := range users {
+		userMap[user.ID] = user
+	}
 
-	switch currentUser.Role {
-	case domain.RoleAdmin, domain.RoleHR:
-		// For admin and HR - all forms
-		forms, err = s.formRepo.FindAll(ctx)
-		if err != nil {
-			return nil, err
-		}
+	// Group forms by user
+	userFormsMap := make(map[uuid.UUID][]domain.Form)
+	for _, form := range forms {
+		userFormsMap[form.UserID] = append(userFormsMap[form.UserID], form)
+	}
 
-		// Collect unique form's authors
-		authorIDs := make([]uuid.UUID, 0, len(forms))
-		seen := make(map[uuid.UUID]struct{})
-
-		for _, form := range forms {
-			if _, ok := seen[form.UserID]; !ok {
-				seen[form.UserID] = struct{}{}
-				authorIDs = append(authorIDs, form.UserID)
-			}
-		}
-
-		// Get authors
-		authors, err := s.userRepo.FindByUserIDs(ctx, authorIDs)
-		if err != nil {
-			return nil, err
-		}
-
-		// Map for authors
-		authorMap := make(map[uuid.UUID]domain.User)
-		for _, author := range authors {
-			authorMap[author.ID] = author
-		}
-
-		result = make([]model.FormsWithUser, 0, len(forms))
-		for _, form := range forms {
-			if author, ok := authorMap[form.UserID]; ok {
-				result = append(result, model.FormsWithUser{
-					User:  author,
-					Forms: []domain.Form{form},
-				})
-			}
-		}
-
-	case domain.RoleEmployee:
-		// for employee - only his forms
-		forms, err = s.formRepo.FindByUserID(ctx, requesterUserID)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(forms) == 0 {
-			return []model.FormsWithUser{}, nil
-		}
-
-		result = []model.FormsWithUser{
-			{
-				User:  *currentUser,
-				Forms: forms,
-			},
+	// Build result
+	result := make([]model.FormsWithUser, 0, len(userFormsMap))
+	for userID, userForms := range userFormsMap {
+		if user, ok := userMap[userID]; ok {
+			result = append(result, model.FormsWithUser{
+				User:  user,
+				Forms: userForms,
+			})
 		}
 	}
 
@@ -222,9 +197,32 @@ func (s *Service) Approve(ctx context.Context, formID uuid.UUID, comment string)
 		return nil, fmt.Errorf("find form: %w", err)
 	}
 
-	if form.Status != domain.StatusApproved {
-		form.ApproveForm(comment)
+	changed, err := form.ApproveForm(comment)
+	if err != nil {
+		return nil, err
+	}
 
+	if changed {
+		if err := s.formRepo.Update(ctx, form); err != nil {
+			return nil, fmt.Errorf("update form: %w", err)
+		}
+	}
+
+	return form, nil
+}
+
+func (s *Service) Reject(ctx context.Context, formID uuid.UUID, comment string) (*domain.Form, error) {
+	form, err := s.formRepo.FindByFormID(ctx, formID)
+	if err != nil {
+		return nil, fmt.Errorf("find form: %w", err)
+	}
+
+	changed, err := form.RejectForm(comment)
+	if err != nil {
+		return nil, err
+	}
+
+	if changed {
 		if err := s.formRepo.Update(ctx, form); err != nil {
 			return nil, fmt.Errorf("update form: %w", err)
 		}

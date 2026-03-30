@@ -32,16 +32,23 @@ func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.Us
 	return user, nil
 }
 
-func (s *Service) UpdateStatus(ctx context.Context, userID uuid.UUID, newStatus bool) (*domain.User, error) {
+func (s *Service) ChangeActiveStatus(ctx context.Context, userID uuid.UUID, isActive bool) (*domain.User, error) {
 	user, err := s.repo.FindByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("find user: %w", err)
 	}
 
-	user.ChangeStatus(newStatus)
+	var changed bool
+	if isActive {
+		changed = user.Activate()
+	} else {
+		changed = user.Deactivate()
+	}
 
-	if err := s.repo.Update(ctx, user); err != nil {
-		return nil, fmt.Errorf("update user: %w", err)
+	if changed {
+		if err := s.repo.Update(ctx, user); err != nil {
+			return nil, fmt.Errorf("update user: %w", err)
+		}
 	}
 
 	return user, nil

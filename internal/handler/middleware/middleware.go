@@ -43,7 +43,6 @@ func (m *Auth) AuthMiddleware(next http.Handler) http.Handler {
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
 			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("bearer token is required"))
-
 			return
 		}
 
