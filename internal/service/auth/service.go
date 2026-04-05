@@ -52,7 +52,7 @@ func (s *Service) ImplementAdmin(ctx context.Context, email, password string) er
 	adminUser := domain.NewUser(
 		domain.RoleAdmin,
 		"Super",
-		"User",
+		"user",
 		"Administrator",
 		email,
 		string(hashedPassword),

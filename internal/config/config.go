@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -15,9 +16,16 @@ type PostgresConfig struct {
 	MigrationDir string `env:"MIGRATION_DIR" env-default:"./migrations"`
 }
 
+type HTTPConfig struct {
+	Port         string        `env:"HTTP_PORT" env-default:"8080"`
+	ReadTimeout  time.Duration `env:"HTTP_READ_TIMEOUT" env-default:"15s"`
+	WriteTimeout time.Duration `env:"HTTP_WRITE_TIMEOUT" env-default:"15s"`
+	IdleTimeout  time.Duration `env:"HTTP_IDLE_TIMEOUT" env-default:"60s"`
+}
+
 type Config struct {
-	PostgresConfig
-	HTTPPort      string `env:"HTTP_PORT" env-default:"8080"`
+	HTTP          HTTPConfig
+	Postgres      PostgresConfig
 	JWTSecret     string `env:"JWT_SECRET" env-required:"true"`
 	AdminEmail    string `env:"ADMIN_EMAIL" env-required:"true"`
 	AdminPassword string `env:"ADMIN_PASSWORD" env-required:"true"`

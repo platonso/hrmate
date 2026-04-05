@@ -1,94 +1,42 @@
 package entity
 
-import (
-	"database/sql"
-
-	"github.com/platonso/hrmate/internal/domain"
-)
+import "github.com/platonso/hrmate/internal/domain"
 
 func ToFormRecord(f domain.Form) FormRecord {
-	record := FormRecord{
+	return FormRecord{
 		ID:          f.ID,
 		UserID:      f.UserID,
 		Title:       f.Title,
 		Description: f.Description,
-		CreatedAt:   f.CreatedAt,
-		Status:      string(f.Status),
-	}
 
-	if f.StartDate != nil {
-		record.StartDate = sql.NullTime{
-			Time:  *f.StartDate,
-			Valid: true,
-		}
-	} else {
-		record.StartDate = sql.NullTime{Valid: false}
-	}
+		StartDate:  f.StartDate,
+		EndDate:    f.EndDate,
+		CreatedAt:  f.CreatedAt,
+		ReviewedAt: f.ReviewedAt,
 
-	if f.EndDate != nil {
-		record.EndDate = sql.NullTime{
-			Time:  *f.EndDate,
-			Valid: true,
-		}
-	} else {
-		record.EndDate = sql.NullTime{Valid: false}
+		Status:  string(f.Status),
+		Comment: f.Comment,
 	}
-
-	if f.ReviewedAt != nil {
-		record.ReviewedAt = sql.NullTime{
-			Time:  *f.ReviewedAt,
-			Valid: true,
-		}
-	} else {
-		record.ReviewedAt = sql.NullTime{Valid: false}
-	}
-
-	if f.Comment != nil {
-		record.Comment = sql.NullString{
-			String: *f.Comment,
-			Valid:  true,
-		}
-	} else {
-		record.Comment = sql.NullString{Valid: false}
-	}
-
-	return record
 }
 
-func ToDomainForm(record FormRecord) domain.Form {
-	form := domain.Form{
-		ID:          record.ID,
-		UserID:      record.UserID,
-		Title:       record.Title,
-		Description: record.Description,
-		CreatedAt:   record.CreatedAt,
-		Status:      domain.FormStatus(record.Status),
-	}
+func ToDomainForm(fr FormRecord) domain.Form {
+	return domain.Form{
+		ID:          fr.ID,
+		UserID:      fr.UserID,
+		Title:       fr.Title,
+		Description: fr.Description,
 
-	if record.StartDate.Valid {
-		form.StartDate = &record.StartDate.Time
-	}
+		StartDate:  fr.StartDate,
+		EndDate:    fr.EndDate,
+		CreatedAt:  fr.CreatedAt,
+		ReviewedAt: fr.ReviewedAt,
 
-	if record.EndDate.Valid {
-		form.EndDate = &record.EndDate.Time
+		Status:  domain.FormStatus(fr.Status),
+		Comment: fr.Comment,
 	}
-
-	if record.ReviewedAt.Valid {
-		form.ReviewedAt = &record.ReviewedAt.Time
-	}
-
-	if record.Comment.Valid {
-		form.Comment = &record.Comment.String
-	}
-
-	return form
 }
 
 func ToDomainForms(records []FormRecord) []domain.Form {
-	if len(records) == 0 {
-		return []domain.Form{}
-	}
-
 	forms := make([]domain.Form, len(records))
 	for i := range records {
 		forms[i] = ToDomainForm(records[i])

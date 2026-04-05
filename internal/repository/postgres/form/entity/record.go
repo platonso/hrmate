@@ -1,7 +1,6 @@
 package entity
 
 import (
-	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,11 +12,11 @@ type FormRecord struct {
 	Title       string    `db:"title"`
 	Description string    `db:"description"`
 
-	StartDate sql.NullTime `db:"start_date"`
-	EndDate   sql.NullTime `db:"end_date"`
+	StartDate *time.Time `db:"start_date"`
+	EndDate   *time.Time `db:"end_date"`
 
-	CreatedAt  time.Time      `db:"created_at"`
-	ReviewedAt sql.NullTime   `db:"reviewed_at"`
-	Status     string         `db:"status"`
-	Comment    sql.NullString `db:"comment"`
+	CreatedAt  time.Time  `db:"created_at"`
+	ReviewedAt *time.Time `db:"reviewed_at"`
+	Status     string     `db:"status"`
+	Comment    *string    `db:"comment"`
 }

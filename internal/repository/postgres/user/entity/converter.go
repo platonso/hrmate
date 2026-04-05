@@ -16,25 +16,21 @@ func ToUserRecord(u domain.User) UserRecord {
 	return record
 }
 
-func ToDomainUser(record UserRecord) domain.User {
+func ToDomainUser(ur UserRecord) domain.User {
 	user := domain.User{
-		ID:             record.ID,
-		Role:           domain.Role(record.Role),
-		FirstName:      record.FirstName,
-		LastName:       record.LastName,
-		Position:       record.Position,
-		Email:          record.Email,
-		HashedPassword: record.HashedPassword,
-		IsActive:       record.IsActive,
+		ID:             ur.ID,
+		Role:           domain.Role(ur.Role),
+		FirstName:      ur.FirstName,
+		LastName:       ur.LastName,
+		Position:       ur.Position,
+		Email:          ur.Email,
+		HashedPassword: ur.HashedPassword,
+		IsActive:       ur.IsActive,
 	}
 	return user
 }
 
 func ToDomainUsers(records []UserRecord) []domain.User {
-	if len(records) == 0 {
-		return []domain.User{}
-	}
-
 	users := make([]domain.User, len(records))
 	for i := range records {
 		users[i] = ToDomainUser(records[i])

@@ -11,9 +11,9 @@ import (
 )
 
 type Repository struct {
-	Users user.Repository
-	Forms form.Repository
-	db    *pgxpool.Pool
+	Users *user.Repository
+	Forms *form.Repository
+	pool  *pgxpool.Pool
 }
 
 func NewRepository(ctx context.Context, connStr string) (*Repository, error) {
@@ -22,17 +22,13 @@ func NewRepository(ctx context.Context, connStr string) (*Repository, error) {
 		return nil, err
 	}
 
-	return &Repository{
-		Users: *user.NewRepository(db),
-		Forms: *form.NewRepository(db),
-		db:    db,
-	}, nil
-}
-
-func (r *Repository) Close() {
-	if r.db != nil {
-		r.db.Close()
+	repo := &Repository{
+		Users: user.NewRepository(db),
+		Forms: form.NewRepository(db),
+		pool:  db,
 	}
+
+	return repo, nil
 }
 
 func NewPool(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
@@ -50,4 +46,10 @@ func NewPool(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil
+}
+
+func (r *Repository) Close() {
+	if r.pool != nil {
+		r.pool.Close()
+	}
 }

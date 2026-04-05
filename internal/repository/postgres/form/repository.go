@@ -53,13 +53,7 @@ func (r *Repository) FindAll(ctx context.Context) ([]domain.Form, error) {
         ORDER BY created_at DESC
     `
 
-	rows, err := r.DB.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query forms: %w", err)
-	}
-	defer rows.Close()
-
-	records, err := scanForms(rows)
+	records, err := r.findForms(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -89,13 +83,7 @@ func (r *Repository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]doma
         ORDER BY created_at DESC
     `
 
-	rows, err := r.DB.Query(ctx, query, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query forms by user: %w", err)
-	}
-	defer rows.Close()
-
-	records, err := scanForms(rows)
+	records, err := r.findForms(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,19 +95,20 @@ func (r *Repository) FindByFilter(ctx context.Context, filter *formservice.Filte
 	query := `SELECT id, user_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment FROM forms`
 	var conditions []string
 	var args []any
+	argPos := 1
 
-	if filter == nil {
-		filter = &formservice.Filter{}
-	}
+	if filter != nil {
+		if filter.UserID != nil {
+			conditions = append(conditions, fmt.Sprintf("user_id = $%d", argPos))
+			args = append(args, *filter.UserID)
+			argPos++
+		}
 
-	if filter.UserID != nil {
-		conditions = append(conditions, fmt.Sprintf("user_id = $%d", len(args)+1))
-		args = append(args, *filter.UserID)
-	}
-
-	if filter.FormStatus != nil {
-		conditions = append(conditions, fmt.Sprintf("status = $%d", len(args)+1))
-		args = append(args, string(*filter.FormStatus))
+		if filter.FormStatus != nil {
+			conditions = append(conditions, fmt.Sprintf("status = $%d", argPos))
+			args = append(args, string(*filter.FormStatus))
+			argPos++
+		}
 	}
 
 	if len(conditions) > 0 {
@@ -128,15 +117,9 @@ func (r *Repository) FindByFilter(ctx context.Context, filter *formservice.Filte
 
 	query += " ORDER BY created_at DESC"
 
-	rows, err := r.DB.Query(ctx, query, args...)
+	records, err := r.findForms(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query forms by filter: %w", err)
-	}
-	defer rows.Close()
-
-	records, err := scanForms(rows)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan forms: %w", err)
+		return nil, fmt.Errorf("find forms by filter: %w", err)
 	}
 
 	return entity.ToDomainForms(records), nil
@@ -184,30 +167,15 @@ func (r *Repository) findForm(ctx context.Context, query string, args ...any) (e
 	return rec, nil
 }
 
-func scanForms(rows pgx.Rows) ([]entity.FormRecord, error) {
-	var records []entity.FormRecord
-	for rows.Next() {
-		var rec entity.FormRecord
-		err := rows.Scan(
-			&rec.ID,
-			&rec.UserID,
-			&rec.Title,
-			&rec.Description,
-			&rec.StartDate,
-			&rec.EndDate,
-			&rec.CreatedAt,
-			&rec.ReviewedAt,
-			&rec.Status,
-			&rec.Comment,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan form row: %w", err)
-		}
-		records = append(records, rec)
+func (r *Repository) findForms(ctx context.Context, query string, args ...any) ([]entity.FormRecord, error) {
+	rows, err := r.DB.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query forms: %w", err)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
+	records, err := pgx.CollectRows(rows, pgx.RowToStructByName[entity.FormRecord])
+	if err != nil {
+		return nil, fmt.Errorf("collect forms: %w", err)
 	}
 
 	return records, nil

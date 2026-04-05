@@ -1,3 +1,5 @@
+.PHONY: docker-up docker-clean port-forward port-close migrate-up migrate-down migrate-status help
+
 docker-up:
 	@docker-compose up -d --build
 docker-clean:
@@ -26,5 +28,5 @@ help:
 	@echo ""
 	@echo "Database Migrations:"
 	@echo "  migrate-up        - Apply all pending migrations"
-	@echo "  migrate-down      - Rollback migration"
+	@echo "  migrate-down      - Rolling back the last migration"
 	@echo "  migrate-status    - Show migration status"

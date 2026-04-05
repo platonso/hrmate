@@ -16,70 +16,71 @@ import (
 )
 
 type Application struct {
-	Config *config.Config
-	Auth   *auth.Service
-	Users  *user.Service
-	Forms  *form.Service
-
-	router    *handler.Router
-	closeFunc func()
+	config *config.Config
+	repo   *postgres.Repository
+	server *http.Server
 }
 
 func New(ctx context.Context, cfg *config.Config) (*Application, error) {
-	postgresRepo, err := postgres.NewRepository(ctx, cfg.GetConnStr())
+	postgresRepo, err := postgres.NewRepository(ctx, cfg.Postgres.GetConnStr())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
 
-	userService := user.NewService(&postgresRepo.Users)
-	authService := auth.NewService(&postgresRepo.Users)
-	formService := form.NewService(&postgresRepo.Forms, &postgresRepo.Users)
+	userSvc := user.NewService(postgresRepo.Users)
+	authSvc := auth.NewService(postgresRepo.Users)
+	formSvc := form.NewService(postgresRepo.Forms, postgresRepo.Users)
 
-	if err := authService.ImplementAdmin(ctx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
+	if err := authSvc.ImplementAdmin(ctx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
+		postgresRepo.Close()
 		return nil, fmt.Errorf("failed to implement admin: %w", err)
 	}
 
-	router := handler.NewRouter(authService, userService, formService)
+	router := handler.NewRouter(authSvc, userSvc, formSvc)
+
+	srv := &http.Server{
+		Addr:         ":" + cfg.HTTP.Port,
+		Handler:      router.Routes(),
+		ReadTimeout:  cfg.HTTP.ReadTimeout,
+		WriteTimeout: cfg.HTTP.WriteTimeout,
+		IdleTimeout:  cfg.HTTP.IdleTimeout,
+	}
 
 	app := &Application{
-		Config: cfg,
-		Auth:   authService,
-		Users:  userService,
-		Forms:  formService,
-
-		router:    router,
-		closeFunc: postgresRepo.Close,
+		config: cfg,
+		repo:   postgresRepo,
+		server: srv,
 	}
 
 	return app, nil
 }
 
-func (app *Application) Run() error {
-	return app.StartServer()
-}
+func (app *Application) Start(errChan chan<- error) {
+	log.Printf("Starting server on port %s", app.config.HTTP.Port)
 
-func (app *Application) routes() http.Handler {
-	return app.router.Routes()
-}
-
-func (app *Application) StartServer() error {
-	server := &http.Server{
-		Addr:    ":" + app.Config.HTTPPort,
-		Handler: app.routes(),
+	if err := app.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		errChan <- err
 	}
+}
 
-	log.Printf("Starting server on port %s", app.Config.HTTPPort)
-	if err := server.ListenAndServe(); err != nil {
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
+func (app *Application) Stop(ctx context.Context) error {
+	log.Println("Initiating graceful shutdown...")
+	var shutdownErr error
+
+	if app.server != nil {
+		log.Println("Shutting down HTTP server...")
+		if err := app.server.Shutdown(ctx); err != nil {
+			shutdownErr = fmt.Errorf("server shutdown failed: %w", err)
+			log.Printf("Error during server shutdown: %v", err)
 		}
-		return err
 	}
-	return nil
-}
 
-func (app *Application) Close() {
-	if app.closeFunc != nil {
-		app.closeFunc()
+	log.Println("Closing database connection...")
+	app.repo.Close()
+
+	if shutdownErr == nil {
+		log.Println("Graceful shutdown completed successfully")
 	}
+
+	return shutdownErr
 }

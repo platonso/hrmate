@@ -9,7 +9,7 @@ var (
 	ErrFormAlreadyRejected = errors.New("form has already been rejected")
 	ErrFormAlreadyApproved = errors.New("form has already been approved")
 
-	// Username errors
+	// User errors
 	ErrUserNotFound       = errors.New("user not found")
 	ErrUserNotActive      = errors.New("user account is not active")
 	ErrUserAlreadyExists  = errors.New("user already exists")
