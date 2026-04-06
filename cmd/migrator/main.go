@@ -54,7 +54,7 @@ func main() {
 }
 
 func connectDB(cfg *config.PostgresConfig) *sql.DB {
-	db, err := sql.Open("pgx", cfg.GetConnStr())
+	db, err := sql.Open("pgx", cfg.GetDSN())
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}

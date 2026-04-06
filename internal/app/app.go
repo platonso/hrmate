@@ -22,7 +22,7 @@ type Application struct {
 }
 
 func New(ctx context.Context, cfg *config.Config) (*Application, error) {
-	postgresRepo, err := postgres.NewRepository(ctx, cfg.Postgres.GetConnStr())
+	postgresRepo, err := postgres.NewRepository(ctx, cfg.Postgres.GetDSN())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}

@@ -51,7 +51,7 @@ func NewDB() (*PostgresConfig, error) {
 	return &cfg, nil
 }
 
-func (c *PostgresConfig) GetConnStr() string {
+func (c *PostgresConfig) GetDSN() string {
 	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
 		c.Username,
 		c.Password,
