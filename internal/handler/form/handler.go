@@ -2,28 +2,19 @@ package form
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
-	formdto "github.com/platonso/hrmate/internal/handler/form/dto"
+	"github.com/platonso/hrmate/internal/handler/form/dto"
 	"github.com/platonso/hrmate/internal/handler/middleware"
-	"github.com/platonso/hrmate/internal/handler/middleware/dto"
+	"github.com/platonso/hrmate/internal/handler/request"
+	"github.com/platonso/hrmate/internal/handler/response"
 	formservice "github.com/platonso/hrmate/internal/service/form"
 	"github.com/platonso/hrmate/internal/service/form/model"
-)
-
-const (
-	QueryParamUserID = "user_id"
-	QueryParamStatus = "status"
 )
 
 type Service interface {
@@ -36,204 +27,169 @@ type Service interface {
 }
 
 type Handler struct {
-	svc       Service
-	validator *validator.Validate
+	svc Service
 }
 
-func NewHandler(svc Service, v *validator.Validate) *Handler {
+func NewHandler(svc Service) *Handler {
 	return &Handler{
-		svc:       svc,
-		validator: v,
+		svc: svc,
 	}
 }
 
 func (h *Handler) HandleCreateForm(w http.ResponseWriter, r *http.Request) {
-	var req formdto.FormCreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid JSON"))
+	var req dto.FormCreateRequest
+
+	if err := request.DecodeAndValidate(r, &req); err != nil {
+		response.WriteError(w, errs.ErrInvalidRequest, "invalid request format")
 		return
 	}
 
-	if err := h.validator.Struct(req); err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("validation failed"))
+	requesterID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
 		return
 	}
 
-	userID, _ := middleware.GetUserID(r.Context())
+	formCreateInput := dto.ToFormCreateInput(req)
 
-	formCreateInput := formdto.ToFormCreateInput(req)
-
-	form, err := h.svc.Create(r.Context(), &formCreateInput, userID)
+	form, err := h.svc.Create(r.Context(), &formCreateInput, requesterID)
 	if err != nil {
-		dto.WriteJSONError(w, http.StatusInternalServerError, err)
+		response.WriteError(w, err, "failed to create form")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(formdto.ToFormResponse(form))
+	response.WriteJSON(w, http.StatusCreated, dto.ToFormResponse(form))
 }
 
 func (h *Handler) HandleGetForm(w http.ResponseWriter, r *http.Request) {
-	formIdStr := chi.URLParam(r, "id")
-	formID, err := uuid.Parse(formIdStr)
+	formID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid form id"))
+		response.WriteError(w, errs.ErrInvalidRequest, "invalid form id format")
 		return
 	}
 
-	requesterID, _ := middleware.GetUserID(r.Context())
-	requesterRole, _ := middleware.GetUserRole(r.Context())
+	requesterID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
+		return
+	}
+
+	requesterRole, ok := middleware.GetUserRole(r.Context())
+	if !ok {
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
+		return
+	}
 
 	form, err := h.svc.GetForm(r.Context(), formID, requesterID, requesterRole)
 	if err != nil {
-		switch {
-		case errors.Is(err, errs.ErrFormNotFound):
-			dto.WriteJSONError(w, http.StatusNotFound, errors.New("form not found"))
-		case errors.Is(err, errs.ErrForbidden):
-			dto.WriteJSONError(w, http.StatusForbidden, errors.New("forbidden"))
-		default:
-			dto.WriteJSONError(w, http.StatusInternalServerError, err)
-		}
+		response.WriteError(w, err, "failed to get form")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(formdto.ToFormResponse(form))
+	response.WriteJSON(w, http.StatusOK, dto.ToFormResponse(form))
 }
 
 func (h *Handler) HandleGetForms(w http.ResponseWriter, r *http.Request) {
-	requesterID, _ := middleware.GetUserID(r.Context())
-	requesterRole, _ := middleware.GetUserRole(r.Context())
-
-	// Parse query parameters
-	filter, err := h.parseFilter(r)
-	if err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, err)
+	requesterID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
 		return
 	}
 
-	// Call service
+	requesterRole, ok := middleware.GetUserRole(r.Context())
+	if !ok {
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
+		return
+	}
+
+	filter, err := parseFilter(r)
+	if err != nil {
+		response.WriteError(w, errs.ErrInvalidRequest, "invalid filter parameters")
+		return
+	}
+
 	forms, err := h.svc.GetForms(r.Context(), filter, requesterID, requesterRole)
 	if err != nil {
-		switch {
-		case errors.Is(err, errs.ErrForbidden):
-			dto.WriteJSONError(w, http.StatusForbidden, err)
-		case errors.Is(err, errs.ErrUserNotFound):
-			dto.WriteJSONError(w, http.StatusNotFound, err)
-		default:
-			dto.WriteJSONError(w, http.StatusInternalServerError, errors.New("internal server error"))
-			log.Println(err)
-		}
+		response.WriteError(w, err, "failed to get forms")
 		return
 	}
 
-	// Return results (can be empty array)
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(formdto.ToFormResponses(forms))
+	response.WriteJSON(w, http.StatusOK, forms)
 }
 
 func (h *Handler) HandleGetFormsWithUsers(w http.ResponseWriter, r *http.Request) {
-	requesterRole, _ := middleware.GetUserRole(r.Context())
-
-	// Parse query parameters
-	filter, err := h.parseFilter(r)
-	if err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, err)
+	requesterRole, ok := middleware.GetUserRole(r.Context())
+	if !ok {
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
 		return
 	}
 
-	// Call service
+	filter, err := parseFilter(r)
+	if err != nil {
+		response.WriteError(w, errs.ErrInvalidRequest, "invalid filter parameters")
+		return
+	}
+
 	formsWithUsers, err := h.svc.GetFormsWithUsers(r.Context(), filter, requesterRole)
 	if err != nil {
-		switch {
-		case errors.Is(err, errs.ErrForbidden):
-			dto.WriteJSONError(w, http.StatusForbidden, errors.New("forbidden"))
-		case errors.Is(err, errs.ErrUserNotFound):
-			dto.WriteJSONError(w, http.StatusNotFound, errors.New("user not found"))
-		case strings.Contains(err.Error(), "invalid status"):
-			dto.WriteJSONError(w, http.StatusBadRequest, err)
-		default:
-			dto.WriteJSONError(w, http.StatusInternalServerError, errors.New("internal server error"))
-			log.Println(err)
-		}
+		response.WriteError(w, err, "failed to get forms")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(formdto.ToFormsWithUserResponses(formsWithUsers))
+	response.WriteJSON(w, http.StatusOK, dto.ToFormsWithUserResponses(formsWithUsers))
 }
 
 func (h *Handler) HandleApprove(w http.ResponseWriter, r *http.Request) {
-	h.handleFormAction(w, r, h.svc.Approve)
+	handleFormAction(w, r, h.svc.Approve)
 }
 func (h *Handler) HandleReject(w http.ResponseWriter, r *http.Request) {
-	h.handleFormAction(w, r, h.svc.Reject)
+	handleFormAction(w, r, h.svc.Reject)
 }
 
-func (h *Handler) parseFilter(r *http.Request) (*formservice.Filter, error) {
+func parseFilter(r *http.Request) (*formservice.Filter, error) {
 	filter := &formservice.Filter{}
 
-	// Parse user_id
-	if userIDStr := r.URL.Query().Get(QueryParamUserID); userIDStr != "" {
+	if userIDStr := r.URL.Query().Get("user_id"); userIDStr != "" {
 		userID, err := uuid.Parse(userIDStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid user_id format: %s", userIDStr)
+			return nil, fmt.Errorf("invalid user id: %w", err)
 		}
 		filter.UserID = &userID
 	}
 
-	// Parse status
-	if statusStr := r.URL.Query().Get(QueryParamStatus); statusStr != "" {
+	if statusStr := r.URL.Query().Get("status"); statusStr != "" {
 		status := domain.FormStatus(statusStr)
 		filter.FormStatus = &status
 		if err := filter.ValidateStatus(); err != nil {
-			return nil, fmt.Errorf("invalid status: %s", statusStr)
+			return nil, fmt.Errorf("invalid form status: %s", statusStr)
 		}
 	}
 
 	return filter, nil
 }
 
-func (h *Handler) handleFormAction(
+func handleFormAction(
 	w http.ResponseWriter,
 	r *http.Request,
 	action func(ctx context.Context, formID uuid.UUID, comment string) (*domain.Form, error),
 ) {
-	// Parsing formID
-	formIDStr := chi.URLParam(r, "id")
-	formID, err := uuid.Parse(formIDStr)
+	formID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid UUID"))
+		response.WriteError(w, errs.ErrInvalidRequest, "invalid form id format")
 		return
 	}
-	// Decoding and validation request
-	var req formdto.FormCommentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid JSON"))
-		return
-	}
-	if err := h.validator.Struct(req); err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("validation failed"))
+	var req dto.FormCommentRequest
+
+	if err := request.DecodeAndValidate(r, &req); err != nil {
+		response.WriteError(w, errs.ErrInvalidRequest, "invalid request format")
 		return
 	}
 
 	form, err := action(r.Context(), formID, req.Comment)
 	if err != nil {
-		switch {
-		case errors.Is(err, errs.ErrFormNotFound):
-			dto.WriteJSONError(w, http.StatusNotFound, errs.ErrFormNotFound)
-		case errors.Is(err, errs.ErrFormAlreadyApproved):
-			dto.WriteJSONError(w, http.StatusBadRequest, errs.ErrFormAlreadyApproved)
-		case errors.Is(err, errs.ErrFormAlreadyRejected):
-			dto.WriteJSONError(w, http.StatusBadRequest, errs.ErrFormAlreadyRejected)
-		default:
-			dto.WriteJSONError(w, http.StatusInternalServerError, errors.New("internal server error"))
-			log.Println(err)
-		}
+		response.WriteError(w, err, "failed to process form action")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(formdto.ToFormResponse(form))
+	response.WriteJSON(w, http.StatusOK, dto.ToFormResponse(form))
 }

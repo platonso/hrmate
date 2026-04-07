@@ -10,7 +10,7 @@ import (
 type PostgresConfig struct {
 	Host         string `env:"POSTGRES_HOST" env-required:"true"`
 	Port         string `env:"POSTGRES_PORT" env-required:"true"`
-	Username     string `env:"POSTGRES_USER" env-required:"true"`
+	User         string `env:"POSTGRES_USER" env-required:"true"`
 	Password     string `env:"POSTGRES_PASSWORD" env-required:"true"`
 	Database     string `env:"POSTGRES_DB" env-required:"true"`
 	MigrationDir string `env:"MIGRATION_DIR" env-default:"./migrations"`
@@ -53,7 +53,7 @@ func NewDB() (*PostgresConfig, error) {
 
 func (c *PostgresConfig) GetDSN() string {
 	return fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
-		c.Username,
+		c.User,
 		c.Password,
 		c.Host,
 		c.Port,

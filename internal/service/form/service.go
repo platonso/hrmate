@@ -3,7 +3,7 @@ package form
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log"
 
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
@@ -47,7 +47,8 @@ func (s *Service) Create(ctx context.Context, formInput *model.FormCreateInput, 
 	)
 
 	if err := s.formRepo.Create(ctx, &form); err != nil {
-		return nil, fmt.Errorf("create form: %w", err)
+		log.Printf("failed to create form for user %s: %v", userID, err)
+		return nil, errs.ErrInternalServer
 	}
 
 	return &form, nil
@@ -59,7 +60,8 @@ func (s *Service) GetForm(ctx context.Context, formID uuid.UUID, requesterID uui
 		if errors.Is(err, errs.ErrFormNotFound) {
 			return nil, errs.ErrFormNotFound
 		}
-		return nil, fmt.Errorf("find form: %w", err)
+		log.Printf("failed to find form: %v", err)
+		return nil, errs.ErrInternalServer
 	}
 
 	switch requesterRole {
@@ -70,6 +72,7 @@ func (s *Service) GetForm(ctx context.Context, formID uuid.UUID, requesterID uui
 		if form.UserID == requesterID {
 			return form, nil
 		}
+		return nil, errs.ErrFormNotFound
 	}
 	return nil, errs.ErrForbidden
 }
@@ -109,7 +112,8 @@ func (s *Service) GetForms(ctx context.Context, filter *Filter, requesterID uuid
 	// Fetch forms from repository
 	forms, err := s.formRepo.FindByFilter(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find forms: %w", err)
+		log.Printf("failed to find forms: %v", err)
+		return nil, errs.ErrInternalServer
 	}
 
 	// Return empty array if no results (not an error)
@@ -141,7 +145,8 @@ func (s *Service) GetFormsWithUsers(ctx context.Context, filter *Filter, request
 	// Fetch forms with filter
 	forms, err := s.formRepo.FindByFilter(ctx, filter)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find forms: %w", err)
+		log.Printf("failed to find forms: %v", err)
+		return nil, errs.ErrInternalServer
 	}
 
 	if len(forms) == 0 {
@@ -162,7 +167,8 @@ func (s *Service) GetFormsWithUsers(ctx context.Context, filter *Filter, request
 	// Fetch users
 	users, err := s.userRepo.FindByUserIDs(ctx, userIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find users: %w", err)
+		log.Printf("failed to find users: %v", err)
+		return nil, errs.ErrInternalServer
 	}
 
 	// Create user map
@@ -194,7 +200,11 @@ func (s *Service) GetFormsWithUsers(ctx context.Context, filter *Filter, request
 func (s *Service) Approve(ctx context.Context, formID uuid.UUID, comment string) (*domain.Form, error) {
 	form, err := s.formRepo.FindByFormID(ctx, formID)
 	if err != nil {
-		return nil, fmt.Errorf("find form: %w", err)
+		if errors.Is(err, errs.ErrFormNotFound) {
+			return nil, errs.ErrFormNotFound
+		}
+		log.Printf("Failed to find form: %v", err)
+		return nil, errs.ErrInternalServer
 	}
 
 	changed, err := form.ApproveForm(comment)
@@ -204,7 +214,8 @@ func (s *Service) Approve(ctx context.Context, formID uuid.UUID, comment string)
 
 	if changed {
 		if err := s.formRepo.Update(ctx, form); err != nil {
-			return nil, fmt.Errorf("update form: %w", err)
+			log.Printf("Failed to update form: %v", err)
+			return nil, errs.ErrInternalServer
 		}
 	}
 
@@ -214,17 +225,22 @@ func (s *Service) Approve(ctx context.Context, formID uuid.UUID, comment string)
 func (s *Service) Reject(ctx context.Context, formID uuid.UUID, comment string) (*domain.Form, error) {
 	form, err := s.formRepo.FindByFormID(ctx, formID)
 	if err != nil {
-		return nil, fmt.Errorf("find form: %w", err)
+		if errors.Is(err, errs.ErrFormNotFound) {
+			return nil, errs.ErrFormNotFound
+		}
+		log.Printf("Failed to find form: %v", err)
+		return nil, errs.ErrInternalServer
 	}
 
-	changed, err := form.RejectForm(comment)
+	changed, err := form.ApproveForm(comment)
 	if err != nil {
 		return nil, err
 	}
 
 	if changed {
 		if err := s.formRepo.Update(ctx, form); err != nil {
-			return nil, fmt.Errorf("update form: %w", err)
+			log.Printf("Failed to update form: %v", err)
+			return nil, errs.ErrInternalServer
 		}
 	}
 

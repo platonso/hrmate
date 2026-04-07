@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
-	"github.com/go-playground/validator/v10"
 	"github.com/platonso/hrmate/internal/domain"
 	"github.com/platonso/hrmate/internal/handler/auth"
 	"github.com/platonso/hrmate/internal/handler/form"
@@ -32,17 +31,15 @@ type Router struct {
 
 func NewRouter(authSvc AuthProvider, userSvc UserProvider, formSvc form.Service,
 ) *Router {
-	v := validator.New()
-
 	authMiddleware := &middleware.Auth{
 		AuthSvc: authSvc,
 		UserSvc: userSvc,
 	}
 
 	return &Router{
-		handlerAuth: auth.NewHandler(authSvc, v),
-		handlerUser: user.NewHandler(userSvc, v),
-		handlerForm: form.NewHandler(formSvc, v),
+		handlerAuth: auth.NewHandler(authSvc),
+		handlerUser: user.NewHandler(userSvc),
+		handlerForm: form.NewHandler(formSvc),
 		middleware:  authMiddleware,
 	}
 }

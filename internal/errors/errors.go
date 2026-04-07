@@ -3,16 +3,22 @@ package errors
 import "errors"
 
 var (
+	// Auth errors
+	ErrForbidden          = errors.New("FORBIDDEN")
+	ErrUnauthorized       = errors.New("UNAUTHORIZED")
+	ErrInvalidCredentials = errors.New("INVALID_CREDENTIALS")
+
+	// Request errors
+	ErrInvalidRequest = errors.New("INVALID_REQUEST")
+	ErrInternalServer = errors.New("INTERNAL_ERROR")
+
 	// Form errors
-	ErrFormNotFound        = errors.New("form not found")
-	ErrFormInvalidStatus   = errors.New("invalid status")
-	ErrFormAlreadyRejected = errors.New("form has already been rejected")
-	ErrFormAlreadyApproved = errors.New("form has already been approved")
+	ErrFormNotFound        = errors.New("FORM_NOT_FOUND")
+	ErrFormAlreadyRejected = errors.New("FORM_ALREADY_REJECTED")
+	ErrFormAlreadyApproved = errors.New("FORM_ALREADY_APPROVED")
 
 	// User errors
-	ErrUserNotFound       = errors.New("user not found")
-	ErrUserNotActive      = errors.New("user account is not active")
-	ErrUserAlreadyExists  = errors.New("user already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrForbidden          = errors.New("forbidden")
+	ErrUserNotFound      = errors.New("USER_NOT_FOUND")
+	ErrUserNotActive     = errors.New("USER_NOT_ACTIVE")
+	ErrUserAlreadyExists = errors.New("USER_ALREADY_EXISTS")
 )

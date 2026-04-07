@@ -54,7 +54,7 @@ func (f *Form) ApproveForm(comment string) (bool, error) {
 	}
 
 	if f.Status != StatusPending {
-		return false, errs.ErrFormInvalidStatus
+		return false, errs.ErrInvalidRequest
 	}
 
 	approveTime := time.Now()
@@ -75,7 +75,7 @@ func (f *Form) RejectForm(comment string) (bool, error) {
 	}
 
 	if f.Status != StatusPending {
-		return false, errs.ErrFormInvalidStatus
+		return false, errs.ErrInvalidRequest
 	}
 
 	rejectTime := time.Now()

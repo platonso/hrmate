@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
-	"github.com/platonso/hrmate/internal/handler/middleware/dto"
+	"github.com/platonso/hrmate/internal/handler/response"
 )
 
 const (
@@ -36,13 +36,13 @@ func (m *Auth) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("authorization header is required"))
+			response.WriteError(w, errs.ErrUnauthorized, "authorization header is required")
 			return
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("bearer token is required"))
+			response.WriteError(w, errs.ErrUnauthorized, "bearer token is required")
 			return
 		}
 
@@ -54,20 +54,20 @@ func (m *Auth) AuthMiddleware(next http.Handler) http.Handler {
 		})
 
 		if err != nil || !token.Valid {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("invalid token"))
+			response.WriteError(w, errs.ErrUnauthorized, "invalid token")
 			return
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("invalid token"))
+			response.WriteError(w, errs.ErrUnauthorized, "invalid token claims")
 			return
 		}
 
 		userIDStr, ok1 := claims["id"].(string)
 		userRoleStr, ok2 := claims["role"].(string)
 		if !ok1 || !ok2 {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("invalid token payload"))
+			response.WriteError(w, errs.ErrUnauthorized, "invalid token payload: missing id or role")
 			return
 		}
 
@@ -75,7 +75,7 @@ func (m *Auth) AuthMiddleware(next http.Handler) http.Handler {
 
 		userID, err := uuid.Parse(userIDStr)
 		if err != nil {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("invalid user ID format"))
+			response.WriteError(w, errs.ErrUnauthorized, "invalid user id format in token")
 			return
 		}
 
@@ -91,7 +91,7 @@ func (m *Auth) RequireRoles(allowedRoles ...domain.Role) func(http.Handler) http
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userRole, ok := GetUserRole(r.Context())
 			if !ok {
-				dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing role"))
+				response.WriteError(w, errs.ErrUnauthorized, "missing user role in context")
 				return
 			}
 
@@ -102,7 +102,7 @@ func (m *Auth) RequireRoles(allowedRoles ...domain.Role) func(http.Handler) http
 				}
 			}
 
-			dto.WriteJSONError(w, http.StatusForbidden, errors.New("permission denied"))
+			response.WriteError(w, errs.ErrForbidden, "forbidden")
 		})
 	}
 }
@@ -111,19 +111,24 @@ func (m *Auth) RequireActiveStatus(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := GetUserID(r.Context())
 		if !ok {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing user ID"))
+			response.WriteError(w, errs.ErrUnauthorized, "authentication required")
 			return
 		}
 
 		isActive, err := m.UserSvc.IsActive(r.Context(), userID)
 		if err != nil {
-			dto.WriteJSONError(w, http.StatusUnauthorized, errs.ErrInvalidCredentials)
-			log.Printf("failed to get isActive status: %v", err)
+			if errors.Is(err, errs.ErrUserNotFound) {
+				response.WriteError(w, errs.ErrUnauthorized, "authentication required")
+				return
+			}
+			log.Printf("failed to check isActive status: %v", err)
+			response.WriteError(w, errs.ErrInternalServer, "failed to verify account status")
+
 			return
 		}
 
 		if !isActive {
-			dto.WriteJSONError(w, http.StatusForbidden, errors.New("account is not active"))
+			response.WriteError(w, errs.ErrForbidden, "account is not active")
 			return
 		}
 

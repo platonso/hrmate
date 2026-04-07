@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -68,31 +69,18 @@ func (r *Repository) FindByUserIDs(ctx context.Context, userIDs []uuid.UUID) ([]
 
 	rows, err := r.DB.Query(ctx, query, userIDs)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	records := make([]entity.UserRecord, 0, len(userIDs))
-	for rows.Next() {
-		var rec entity.UserRecord
-		err := rows.Scan(
-			&rec.ID,
-			&rec.Role,
-			&rec.FirstName,
-			&rec.LastName,
-			&rec.Position,
-			&rec.Email,
-			&rec.HashedPassword,
-			&rec.IsActive,
-		)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, rec)
+		log.Printf("query failed: %v", err)
+		return nil, errs.ErrInternalServer
 	}
 
-	if err = rows.Err(); err != nil {
-		return nil, err
+	records, err := pgx.CollectRows(rows, pgx.RowToStructByName[entity.UserRecord])
+	if err != nil {
+		log.Printf("collect rows: %v", err)
+		return nil, errs.ErrInternalServer
+	}
+
+	if len(records) == 0 {
+		return []domain.User{}, nil
 	}
 
 	return entity.ToDomainUsers(records), nil
@@ -160,32 +148,18 @@ func (r *Repository) FindByRole(ctx context.Context, roles ...domain.Role) ([]do
 `
 	rows, err := r.DB.Query(ctx, query, roles)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	records := make([]entity.UserRecord, 0)
-	for rows.Next() {
-		var rec entity.UserRecord
-		err := rows.Scan(
-			&rec.ID,
-			&rec.Role,
-			&rec.FirstName,
-			&rec.LastName,
-			&rec.Position,
-			&rec.Email,
-			&rec.HashedPassword,
-			&rec.IsActive,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		records = append(records, rec)
+		log.Printf("failed to query users by roles %v: %v", roles, err)
+		return nil, errs.ErrInternalServer
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, err
+	records, err := pgx.CollectRows(rows, pgx.RowToStructByName[entity.UserRecord])
+	if err != nil {
+		log.Printf("collect rows: %v", err)
+		return nil, errs.ErrInternalServer
+	}
+
+	if len(records) == 0 {
+		return []domain.User{}, nil
 	}
 
 	users := entity.ToDomainUsers(records)
@@ -225,5 +199,6 @@ func (r *Repository) findUser(ctx context.Context, query string, args ...any) (e
 		}
 		return entity.UserRecord{}, err
 	}
+
 	return rec, nil
 }

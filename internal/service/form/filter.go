@@ -19,6 +19,6 @@ func (f *Filter) ValidateStatus() error {
 	case domain.StatusPending, domain.StatusApproved, domain.StatusRejected:
 		return nil
 	default:
-		return errs.ErrFormInvalidStatus
+		return errs.ErrInvalidRequest
 	}
 }

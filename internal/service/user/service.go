@@ -2,11 +2,13 @@ package user
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
-	"github.com/platonso/hrmate/internal/errors"
+	errs "github.com/platonso/hrmate/internal/errors"
 )
 
 type Repository interface {
@@ -26,7 +28,11 @@ func NewService(repo Repository) *Service {
 func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	user, err := s.repo.FindByUserID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("find user: %w", err)
+		if errors.Is(err, errs.ErrUserNotFound) {
+			return nil, errs.ErrUserNotFound
+		}
+		log.Printf("failed to get user %s: %v", userID, err)
+		return nil, errs.ErrInternalServer
 	}
 
 	return user, nil
@@ -35,7 +41,11 @@ func (s *Service) GetUserByID(ctx context.Context, userID uuid.UUID) (*domain.Us
 func (s *Service) ChangeActiveStatus(ctx context.Context, userID uuid.UUID, isActive bool) (*domain.User, error) {
 	user, err := s.repo.FindByUserID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("find user: %w", err)
+		if errors.Is(err, errs.ErrUserNotFound) {
+			return nil, errs.ErrUserNotFound
+		}
+		log.Printf("failed to find user %s: %v", userID, err)
+		return nil, errs.ErrInternalServer
 	}
 
 	var changed bool
@@ -63,12 +73,13 @@ func (s *Service) GetUsersByRole(ctx context.Context, requesterRole domain.Role)
 	case domain.RoleHR:
 		rolesToQuery = []domain.Role{domain.RoleEmployee}
 	default:
-		return nil, errors.ErrForbidden
+		return nil, errs.ErrForbidden
 	}
 
 	users, err := s.repo.FindByRole(ctx, rolesToQuery...)
 	if err != nil {
-		return nil, fmt.Errorf("find users by role: %w", err)
+		log.Printf("failed to find users by roles %v: %v", rolesToQuery, err)
+		return nil, errs.ErrInternalServer
 	}
 
 	if users == nil {
@@ -81,7 +92,11 @@ func (s *Service) GetUsersByRole(ctx context.Context, requesterRole domain.Role)
 func (s *Service) IsActive(ctx context.Context, userID uuid.UUID) (bool, error) {
 	active, err := s.repo.IsActive(ctx, userID)
 	if err != nil {
-		return false, fmt.Errorf("check user active status: %w", err)
+		if errors.Is(err, errs.ErrUserNotFound) {
+			return false, errs.ErrUserNotFound
+		}
+		log.Printf("failed to check active status for user %s: %v", userID, err)
+		return false, errs.ErrInternalServer
 	}
 	return active, nil
 }

@@ -69,6 +69,15 @@ func (s *Service) ImplementAdmin(ctx context.Context, email, password string) er
 }
 
 func (s *Service) Register(ctx context.Context, registerInput *model.RegisterInput) (string, error) {
+
+	existingUser, err := s.repo.FindByEmail(ctx, registerInput.Email)
+	if err != nil && !errors.Is(err, errs.ErrUserNotFound) {
+		return "", fmt.Errorf("check user existence: %w", err)
+	}
+
+	if existingUser != nil {
+		return "", errs.ErrUserAlreadyExists
+	}
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(registerInput.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)

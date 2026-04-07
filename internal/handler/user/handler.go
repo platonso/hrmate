@@ -2,18 +2,15 @@ package user
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
 	"github.com/platonso/hrmate/internal/handler/middleware"
-	"github.com/platonso/hrmate/internal/handler/middleware/dto"
-	userdto "github.com/platonso/hrmate/internal/handler/user/dto"
+	"github.com/platonso/hrmate/internal/handler/response"
+	"github.com/platonso/hrmate/internal/handler/user/dto"
 )
 
 type Service interface {
@@ -22,33 +19,29 @@ type Service interface {
 }
 
 type Handler struct {
-	svc       Service
-	validator *validator.Validate
+	svc Service
 }
 
-func NewHandler(svc Service, v *validator.Validate) *Handler {
+func NewHandler(svc Service) *Handler {
 	return &Handler{
-		svc:       svc,
-		validator: v,
+		svc: svc,
 	}
 }
 
 func (h *Handler) HandleGetUsers(w http.ResponseWriter, r *http.Request) {
 	requesterRole, ok := middleware.GetUserRole(r.Context())
 	if !ok {
-		dto.WriteJSONError(w, http.StatusUnauthorized, errors.New("missing role in context"))
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
 		return
 	}
 
 	users, err := h.svc.GetUsersByRole(r.Context(), requesterRole)
 	if err != nil {
-		dto.WriteJSONError(w, http.StatusInternalServerError, err)
+		response.WriteError(w, err, "failed to get users by role")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(userdto.ToUserResponses(users))
+	response.WriteJSON(w, http.StatusOK, dto.ToUserResponses(users))
 }
 
 func (h *Handler) HandleActivate(w http.ResponseWriter, r *http.Request) {
@@ -63,22 +56,16 @@ func (h *Handler) handleChangeActiveStatus(
 	r *http.Request,
 	newStatus bool,
 ) {
-	userIDStr := chi.URLParam(r, "id")
-	userID, err := uuid.Parse(userIDStr)
+	userID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		dto.WriteJSONError(w, http.StatusBadRequest, errors.New("invalid UUID"))
+		response.WriteError(w, errs.ErrInvalidRequest, "invalid user id format")
 		return
 	}
 	user, err := h.svc.ChangeActiveStatus(r.Context(), userID, newStatus)
 	if err != nil {
-		switch {
-		case errors.Is(err, errs.ErrUserNotFound):
-			dto.WriteJSONError(w, http.StatusNotFound, err)
-		default:
-			dto.WriteJSONError(w, http.StatusInternalServerError, errors.New("internal server error"))
-		}
+		response.WriteError(w, err, "failed to change user's active status")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(userdto.ToUserResponse(user))
+
+	response.WriteJSON(w, http.StatusOK, dto.ToUserResponse(user))
 }
