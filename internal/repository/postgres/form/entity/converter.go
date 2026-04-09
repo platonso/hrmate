@@ -6,6 +6,7 @@ func ToFormRecord(f domain.Form) FormRecord {
 	return FormRecord{
 		ID:          f.ID,
 		UserID:      f.UserID,
+		ExecutorID:  f.ExecutorID,
 		Title:       f.Title,
 		Description: f.Description,
 
@@ -23,6 +24,7 @@ func ToDomainForm(fr FormRecord) domain.Form {
 	return domain.Form{
 		ID:          fr.ID,
 		UserID:      fr.UserID,
+		ExecutorID:  fr.ExecutorID,
 		Title:       fr.Title,
 		Description: fr.Description,
 

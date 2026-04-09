@@ -3,9 +3,9 @@ package auth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 
+	"github.com/avito-tech/go-transaction-manager/trm/v2/manager"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
@@ -20,19 +20,25 @@ type Repository interface {
 	FindByRole(ctx context.Context, roles ...domain.Role) ([]domain.User, error)
 }
 type Service struct {
+	txMgr     *manager.Manager
 	repo      Repository
 	jwtSecret string
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewService(txMgr *manager.Manager, repo Repository, jwtSecret string) *Service {
+	return &Service{
+		txMgr:     txMgr,
+		repo:      repo,
+		jwtSecret: jwtSecret,
+	}
 }
 
 func (s *Service) ImplementAdmin(ctx context.Context, email, password string) error {
 
 	admin, err := s.repo.FindByRole(ctx, domain.RoleAdmin)
 	if err != nil {
-		return fmt.Errorf("failed to find admin")
+		log.Printf("failed to find admin: %v", err)
+		return errs.ErrInternalServer
 	}
 
 	if len(admin) > 0 {
@@ -41,12 +47,13 @@ func (s *Service) ImplementAdmin(ctx context.Context, email, password string) er
 	}
 
 	if email == "" || password == "" {
-		return errors.New("ADMIN_EMAIL and ADMIN_PASSWORD must be set in environment")
+		return errs.ErrInvalidRequest
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return fmt.Errorf("failed to hash admin password: %w", err)
+		log.Printf("failed to hash admin password: %v", err)
+		return errs.ErrInternalServer
 	}
 
 	adminUser := domain.NewUser(
@@ -61,7 +68,8 @@ func (s *Service) ImplementAdmin(ctx context.Context, email, password string) er
 	adminUser.Activate()
 
 	if err := s.repo.Create(ctx, &adminUser); err != nil {
-		return fmt.Errorf("failed to create admin: %w", err)
+		log.Printf("failed to create admin: %v", err)
+		return errs.ErrInternalServer
 	}
 
 	log.Println("admin has been created successfully")
@@ -69,36 +77,46 @@ func (s *Service) ImplementAdmin(ctx context.Context, email, password string) er
 }
 
 func (s *Service) Register(ctx context.Context, registerInput *model.RegisterInput) (string, error) {
+	var user domain.User
 
-	existingUser, err := s.repo.FindByEmail(ctx, registerInput.Email)
-	if err != nil && !errors.Is(err, errs.ErrUserNotFound) {
-		return "", fmt.Errorf("check user existence: %w", err)
-	}
+	if err := s.txMgr.Do(ctx, func(txCtx context.Context) error {
+		existingUser, err := s.repo.FindByEmail(txCtx, registerInput.Email)
+		if err != nil && !errors.Is(err, errs.ErrUserNotFound) {
+			log.Printf("failed to check user existence: %v", err)
+			return errs.ErrInternalServer
+		}
 
-	if existingUser != nil {
-		return "", errs.ErrUserAlreadyExists
-	}
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(registerInput.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", fmt.Errorf("hash password: %w", err)
-	}
+		if existingUser != nil {
+			return errs.ErrUserAlreadyExists
+		}
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(registerInput.Password), bcrypt.DefaultCost)
+		if err != nil {
+			log.Printf("failed to hash password: %v", err)
+			return errs.ErrInternalServer
+		}
 
-	user := domain.NewUser(
-		registerInput.Role,
-		registerInput.FirstName,
-		registerInput.LastName,
-		registerInput.Position,
-		registerInput.Email,
-		string(hashedPassword),
-	)
+		user = domain.NewUser(
+			registerInput.Role,
+			registerInput.FirstName,
+			registerInput.LastName,
+			registerInput.Position,
+			registerInput.Email,
+			string(hashedPassword),
+		)
 
-	if err := s.repo.Create(ctx, &user); err != nil {
-		return "", fmt.Errorf("create user: %w", err)
+		if err := s.repo.Create(txCtx, &user); err != nil {
+			log.Printf("failed to create user: %v", err)
+			return errs.ErrInternalServer
+		}
+		return nil
+	}); err != nil {
+		return "", err
 	}
 
 	token, err := generateJWT(user.ID, user.Role, s.jwtSecret)
 	if err != nil {
-		return "", fmt.Errorf("generate jwt: %w", err)
+		log.Printf("failed to generate JWT: %v", err)
+		return "", errs.ErrInternalServer
 	}
 
 	return token, nil
@@ -110,7 +128,8 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, er
 		if errors.Is(err, errs.ErrUserNotFound) {
 			return "", errs.ErrInvalidCredentials
 		}
-		return "", fmt.Errorf("find user by email: %w", err)
+		log.Printf("failed to find user by email: %v", err)
+		return "", errs.ErrInternalServer
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(password)); err != nil {
@@ -123,7 +142,8 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, er
 
 	token, err := generateJWT(user.ID, user.Role, s.jwtSecret)
 	if err != nil {
-		return "", fmt.Errorf("generate jwt: %w", err)
+		log.Printf("failed to generate JWT: %v", err)
+		return "", errs.ErrInternalServer
 	}
 
 	return token, nil

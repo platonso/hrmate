@@ -9,6 +9,7 @@ import (
 type FormRecord struct {
 	ID          uuid.UUID `db:"id"`
 	UserID      uuid.UUID `db:"user_id"`
+	ExecutorID  uuid.UUID `db:"executor_id"`
 	Title       string    `db:"title"`
 	Description string    `db:"description"`
 

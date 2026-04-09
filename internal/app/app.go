@@ -22,14 +22,14 @@ type Application struct {
 }
 
 func New(ctx context.Context, cfg *config.Config) (*Application, error) {
-	postgresRepo, err := postgres.NewRepository(ctx, cfg.Postgres.GetDSN())
+	postgresRepo, txMgr, err := postgres.NewRepository(ctx, cfg.Postgres.GetDSN())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
 
 	userSvc := user.NewService(postgresRepo.Users)
-	authSvc := auth.NewService(postgresRepo.Users)
-	formSvc := form.NewService(postgresRepo.Forms, postgresRepo.Users)
+	authSvc := auth.NewService(txMgr, postgresRepo.Users, cfg.JWTSecret)
+	formSvc := form.NewService(txMgr, postgresRepo.Forms, postgresRepo.Users)
 
 	if err := authSvc.ImplementAdmin(ctx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		postgresRepo.Close()

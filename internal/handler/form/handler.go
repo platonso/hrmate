@@ -21,7 +21,7 @@ type Service interface {
 	Create(ctx context.Context, formDTO *model.FormCreateInput, userID uuid.UUID) (*domain.Form, error)
 	GetForm(ctx context.Context, formID uuid.UUID, requesterID uuid.UUID, requesterRole domain.Role) (*domain.Form, error)
 	GetForms(ctx context.Context, filter *formservice.Filter, requesterID uuid.UUID, requesterRole domain.Role) ([]domain.Form, error)
-	GetFormsWithUsers(ctx context.Context, filter *formservice.Filter, requesterRole domain.Role) ([]model.FormsWithUser, error)
+	GetFormsWithUsers(ctx context.Context, filter *formservice.Filter, requesterID uuid.UUID, requesterRole domain.Role) ([]model.FormsWithUser, error)
 	Approve(ctx context.Context, formID uuid.UUID, comment string) (*domain.Form, error)
 	Reject(ctx context.Context, formID uuid.UUID, comment string) (*domain.Form, error)
 }
@@ -118,6 +118,12 @@ func (h *Handler) HandleGetForms(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleGetFormsWithUsers(w http.ResponseWriter, r *http.Request) {
+	requesterID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
+		return
+	}
+
 	requesterRole, ok := middleware.GetUserRole(r.Context())
 	if !ok {
 		response.WriteError(w, errs.ErrUnauthorized, "authentication required")
@@ -130,7 +136,7 @@ func (h *Handler) HandleGetFormsWithUsers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	formsWithUsers, err := h.svc.GetFormsWithUsers(r.Context(), filter, requesterRole)
+	formsWithUsers, err := h.svc.GetFormsWithUsers(r.Context(), filter, requesterID, requesterRole)
 	if err != nil {
 		response.WriteError(w, err, "failed to get forms")
 		return

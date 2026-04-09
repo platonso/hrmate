@@ -5,9 +5,11 @@ import (
 	"errors"
 	"log"
 
+	"github.com/avito-tech/go-transaction-manager/trm/v2/manager"
 	"github.com/google/uuid"
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
+	"github.com/platonso/hrmate/internal/service/assignment"
 	"github.com/platonso/hrmate/internal/service/form/model"
 )
 
@@ -23,35 +25,60 @@ type Repository interface {
 type UserRepository interface {
 	FindByUserID(ctx context.Context, userId uuid.UUID) (*domain.User, error)
 	FindByUserIDs(ctx context.Context, userIDs []uuid.UUID) ([]domain.User, error)
+	FindActiveHRsWithWorkload(ctx context.Context) ([]assignment.HRWorkload, error)
 }
 
 type Service struct {
+	txMgr    *manager.Manager
 	formRepo Repository
 	userRepo UserRepository
 }
 
-func NewService(formRepo Repository, userRepo UserRepository) *Service {
+func NewService(txMgr *manager.Manager, formRepo Repository, userRepo UserRepository) *Service {
 	return &Service{
+		txMgr:    txMgr,
 		formRepo: formRepo,
 		userRepo: userRepo,
 	}
 }
 
 func (s *Service) Create(ctx context.Context, formInput *model.FormCreateInput, userID uuid.UUID) (*domain.Form, error) {
-	form := domain.NewForm(
-		userID,
-		formInput.Title,
-		formInput.Description,
-		formInput.StartDate,
-		formInput.EndDate,
-	)
+	var resultForm *domain.Form
+	if err := s.txMgr.Do(ctx, func(txCtx context.Context) error {
+		hrs, err := s.userRepo.FindActiveHRsWithWorkload(txCtx)
+		if err != nil {
+			log.Printf("failed to find active HRs: %v", err)
+			return errs.ErrInternalServer
+		}
 
-	if err := s.formRepo.Create(ctx, &form); err != nil {
-		log.Printf("failed to create form for user %s: %v", userID, err)
-		return nil, errs.ErrInternalServer
+		executorID, err := assignment.SelectOptimalHR(hrs)
+		if err != nil {
+			if errors.Is(err, errs.ErrNoAvailableExecutors) {
+				return errs.ErrNoAvailableExecutors
+			}
+			log.Printf("failed to select optimal HR: %v", err)
+			return errs.ErrInternalServer
+		}
+
+		form := domain.NewForm(
+			userID,
+			executorID,
+			formInput.Title,
+			formInput.Description,
+			formInput.StartDate,
+			formInput.EndDate,
+		)
+
+		if err := s.formRepo.Create(txCtx, &form); err != nil {
+			log.Printf("failed to create form for user %s: %v", userID, err)
+			return errs.ErrInternalServer
+		}
+		resultForm = &form
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-
-	return &form, nil
+	return resultForm, nil
 }
 
 func (s *Service) GetForm(ctx context.Context, formID uuid.UUID, requesterID uuid.UUID, requesterRole domain.Role) (*domain.Form, error) {
@@ -65,8 +92,15 @@ func (s *Service) GetForm(ctx context.Context, formID uuid.UUID, requesterID uui
 	}
 
 	switch requesterRole {
-	case domain.RoleAdmin, domain.RoleHR:
+	case domain.RoleAdmin:
 		return form, nil
+
+	case domain.RoleHR:
+		// HR can only access forms assigned to them
+		if form.ExecutorID == requesterID {
+			return form, nil
+		}
+		return nil, errs.ErrFormNotFound
 
 	case domain.RoleEmployee:
 		if form.UserID == requesterID {
@@ -78,8 +112,9 @@ func (s *Service) GetForm(ctx context.Context, formID uuid.UUID, requesterID uui
 }
 
 // GetForms retrieves forms based on filter with access control
-// For Employee: can only access own forms
-// For HR/Admin: can access all forms with optional filtering
+// For Employee: can only access own forms (as creator)
+// For HR: can only access forms assigned to them (as executor)
+// For Admin: can access all forms with optional filtering
 func (s *Service) GetForms(ctx context.Context, filter *Filter, requesterID uuid.UUID, requesterRole domain.Role) ([]domain.Form, error) {
 	// Access control logic
 	switch requesterRole {
@@ -91,15 +126,37 @@ func (s *Service) GetForms(ctx context.Context, filter *Filter, requesterID uuid
 		// Force filter to requester's ID
 		filter.UserID = &requesterID
 
-	case domain.RoleHR, domain.RoleAdmin:
-		// HR/Admin can access any forms
+	case domain.RoleHR:
+		// HR can only access forms assigned to them as executor
+		// Force filter to requester's ID as executor
+		filter.ExecutorID = &requesterID
+
 		// If user_id is specified, validate user exists
 		if filter.UserID != nil {
 			_, err := s.userRepo.FindByUserID(ctx, *filter.UserID)
 			if err != nil {
-				return nil, errs.ErrUserNotFound
+				if errors.Is(err, errs.ErrUserNotFound) {
+					return nil, errs.ErrUserNotFound
+				}
+				log.Printf("failed to find user by ID: %v", err)
+				return nil, errs.ErrInternalServer
 			}
 		}
+
+	case domain.RoleAdmin:
+		// Admin can access any forms
+		// If user_id is specified, validate user exists
+		if filter.UserID != nil {
+			_, err := s.userRepo.FindByUserID(ctx, *filter.UserID)
+			if err != nil {
+				if errors.Is(err, errs.ErrUserNotFound) {
+					return nil, errs.ErrUserNotFound
+				}
+				log.Printf("failed to find user by ID: %v", err)
+				return nil, errs.ErrInternalServer
+			}
+		}
+
 	default:
 		return nil, errs.ErrForbidden
 	}
@@ -124,8 +181,19 @@ func (s *Service) GetForms(ctx context.Context, filter *Filter, requesterID uuid
 	return forms, nil
 }
 
-func (s *Service) GetFormsWithUsers(ctx context.Context, filter *Filter, requesterRole domain.Role) ([]model.FormsWithUser, error) {
-	if requesterRole == domain.RoleEmployee {
+func (s *Service) GetFormsWithUsers(ctx context.Context, filter *Filter, requesterID uuid.UUID, requesterRole domain.Role) ([]model.FormsWithUser, error) {
+	switch requesterRole {
+	case domain.RoleEmployee:
+		return nil, errs.ErrForbidden
+
+	case domain.RoleHR:
+		// HR can only access forms assigned to them as executor
+		filter.ExecutorID = &requesterID
+
+	case domain.RoleAdmin:
+		// Admin can access all forms
+
+	default:
 		return nil, errs.ErrForbidden
 	}
 
@@ -133,7 +201,11 @@ func (s *Service) GetFormsWithUsers(ctx context.Context, filter *Filter, request
 	if filter.UserID != nil {
 		_, err := s.userRepo.FindByUserID(ctx, *filter.UserID)
 		if err != nil {
-			return nil, errs.ErrUserNotFound
+			if errors.Is(err, errs.ErrUserNotFound) {
+				return nil, errs.ErrUserNotFound
+			}
+			log.Printf("failed to find user by ID: %v", err)
+			return nil, errs.ErrInternalServer
 		}
 	}
 
@@ -232,7 +304,7 @@ func (s *Service) Reject(ctx context.Context, formID uuid.UUID, comment string) 
 		return nil, errs.ErrInternalServer
 	}
 
-	changed, err := form.ApproveForm(comment)
+	changed, err := form.RejectForm(comment)
 	if err != nil {
 		return nil, err
 	}

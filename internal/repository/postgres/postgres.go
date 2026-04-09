@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	trmpgx "github.com/avito-tech/go-transaction-manager/drivers/pgxv5/v2"
+	"github.com/avito-tech/go-transaction-manager/trm/v2/manager"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/platonso/hrmate/internal/repository/postgres/form"
 	"github.com/platonso/hrmate/internal/repository/postgres/user"
@@ -16,11 +18,13 @@ type Repository struct {
 	pool  *pgxpool.Pool
 }
 
-func NewRepository(ctx context.Context, connStr string) (*Repository, error) {
-	db, err := NewPool(ctx, connStr)
+func NewRepository(ctx context.Context, connStr string) (*Repository, *manager.Manager, error) {
+	db, err := newPool(ctx, connStr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	txMgr := manager.Must(trmpgx.NewDefaultFactory(db))
 
 	repo := &Repository{
 		Users: user.NewRepository(db),
@@ -28,10 +32,10 @@ func NewRepository(ctx context.Context, connStr string) (*Repository, error) {
 		pool:  db,
 	}
 
-	return repo, nil
+	return repo, txMgr, nil
 }
 
-func NewPool(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
+func newPool(ctx context.Context, connStr string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

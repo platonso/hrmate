@@ -37,7 +37,8 @@ func WriteError(w http.ResponseWriter, err error, msg string) {
 
 	case errors.Is(err, errs.ErrUserAlreadyExists),
 		errors.Is(err, errs.ErrFormAlreadyApproved),
-		errors.Is(err, errs.ErrFormAlreadyRejected):
+		errors.Is(err, errs.ErrFormAlreadyRejected),
+		errors.Is(err, errs.ErrNoAvailableExecutors):
 		statusCode = http.StatusConflict
 
 	case errors.Is(err, errs.ErrUserNotFound),

@@ -17,6 +17,9 @@ var (
 	ErrFormAlreadyRejected = errors.New("FORM_ALREADY_REJECTED")
 	ErrFormAlreadyApproved = errors.New("FORM_ALREADY_APPROVED")
 
+	// Assignment errors
+	ErrNoAvailableExecutors = errors.New("NO_AVAILABLE_EXECUTORS")
+
 	// User errors
 	ErrUserNotFound      = errors.New("USER_NOT_FOUND")
 	ErrUserNotActive     = errors.New("USER_NOT_ACTIVE")

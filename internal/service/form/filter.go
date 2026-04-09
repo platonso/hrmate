@@ -8,6 +8,7 @@ import (
 
 type Filter struct {
 	UserID     *uuid.UUID
+	ExecutorID *uuid.UUID
 	FormStatus *domain.FormStatus
 }
 

@@ -3,7 +3,6 @@ package user
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 
 	"github.com/google/uuid"
@@ -57,7 +56,8 @@ func (s *Service) ChangeActiveStatus(ctx context.Context, userID uuid.UUID, isAc
 
 	if changed {
 		if err := s.repo.Update(ctx, user); err != nil {
-			return nil, fmt.Errorf("update user: %w", err)
+			log.Printf("failed to update user %s: %v", userID, err)
+			return nil, errs.ErrInternalServer
 		}
 	}
 

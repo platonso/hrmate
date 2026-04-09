@@ -13,11 +13,6 @@ type FormCreateInput struct {
 	EndDate     *time.Time
 }
 
-type FormWithUser struct {
-	User domain.User
-	Form domain.Form
-}
-
 type FormsWithUser struct {
 	User  domain.User
 	Forms []domain.Form

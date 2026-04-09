@@ -21,8 +21,15 @@ CREATE TABLE IF NOT EXISTS forms (
                                      created_at TIMESTAMPTZ NOT NULL,
                                      reviewed_at TIMESTAMPTZ,
                                      status TEXT NOT NULL,
-                                     comment TEXT
+                                     comment TEXT,
+                                     executor_id UUID,
+                                     CONSTRAINT fk_forms_user FOREIGN KEY (user_id) REFERENCES users(id),
+                                     CONSTRAINT fk_forms_executor FOREIGN KEY (executor_id) REFERENCES users(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_forms_executor_id ON forms(executor_id);
+CREATE INDEX IF NOT EXISTS idx_forms_status ON forms(status);
+CREATE INDEX IF NOT EXISTS idx_forms_user_id ON forms(user_id);
 -- +goose StatementEnd
 
 -- +goose Down

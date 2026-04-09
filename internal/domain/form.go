@@ -18,6 +18,7 @@ const (
 type Form struct {
 	ID          uuid.UUID
 	UserID      uuid.UUID
+	ExecutorID  uuid.UUID
 	Title       string
 	Description string
 
@@ -30,10 +31,11 @@ type Form struct {
 	Comment    *string
 }
 
-func NewForm(userID uuid.UUID, title, description string, startDate, endDate *time.Time) Form {
+func NewForm(userID, executorID uuid.UUID, title, description string, startDate, endDate *time.Time) Form {
 	return Form{
 		ID:          uuid.New(),
 		UserID:      userID,
+		ExecutorID:  executorID,
 		Title:       title,
 		Description: description,
 		StartDate:   startDate,

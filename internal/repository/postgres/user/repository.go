@@ -5,20 +5,26 @@ import (
 	"errors"
 	"log"
 
+	trmpgx "github.com/avito-tech/go-transaction-manager/drivers/pgxv5/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/platonso/hrmate/internal/domain"
 	errs "github.com/platonso/hrmate/internal/errors"
 	"github.com/platonso/hrmate/internal/repository/postgres/user/entity"
+	"github.com/platonso/hrmate/internal/service/assignment"
 )
 
 type Repository struct {
-	DB *pgxpool.Pool
+	db        *pgxpool.Pool
+	ctxGetter *trmpgx.CtxGetter
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{DB: db}
+	return &Repository{
+		db:        db,
+		ctxGetter: trmpgx.DefaultCtxGetter,
+	}
 }
 
 func (r *Repository) Create(ctx context.Context, user *domain.User) error {
@@ -27,7 +33,9 @@ func (r *Repository) Create(ctx context.Context, user *domain.User) error {
 		INSERT INTO users (id, user_role, first_name, last_name, position, email, hashed_password, is_active)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
-	_, err := r.DB.Exec(
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	_, err := conn.Exec(
 		ctx,
 		query,
 		rec.ID,
@@ -67,7 +75,9 @@ func (r *Repository) FindByUserIDs(ctx context.Context, userIDs []uuid.UUID) ([]
 		WHERE id = ANY($1)
 	`
 
-	rows, err := r.DB.Query(ctx, query, userIDs)
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	rows, err := conn.Query(ctx, query, userIDs)
 	if err != nil {
 		log.Printf("query failed: %v", err)
 		return nil, errs.ErrInternalServer
@@ -114,7 +124,9 @@ func (r *Repository) Update(ctx context.Context, user *domain.User) error {
         WHERE id = $8
     `
 
-	tag, err := r.DB.Exec(ctx, query,
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	tag, err := conn.Exec(ctx, query,
 		rec.Role,
 		rec.FirstName,
 		rec.LastName,
@@ -146,7 +158,9 @@ func (r *Repository) FindByRole(ctx context.Context, roles ...domain.Role) ([]do
 		FROM users
 		WHERE user_role = ANY($1)
 `
-	rows, err := r.DB.Query(ctx, query, roles)
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	rows, err := conn.Query(ctx, query, roles)
 	if err != nil {
 		log.Printf("failed to query users by roles %v: %v", roles, err)
 		return nil, errs.ErrInternalServer
@@ -170,7 +184,10 @@ func (r *Repository) IsActive(ctx context.Context, userID uuid.UUID) (bool, erro
 	query := `SELECT is_active FROM users WHERE id = $1`
 
 	var active bool
-	err := r.DB.QueryRow(ctx, query, userID).Scan(&active)
+
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	err := conn.QueryRow(ctx, query, userID).Scan(&active)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, errs.ErrUserNotFound
@@ -183,7 +200,10 @@ func (r *Repository) IsActive(ctx context.Context, userID uuid.UUID) (bool, erro
 
 func (r *Repository) findUser(ctx context.Context, query string, args ...any) (entity.UserRecord, error) {
 	var rec entity.UserRecord
-	err := r.DB.QueryRow(ctx, query, args...).Scan(
+
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	err := conn.QueryRow(ctx, query, args...).Scan(
 		&rec.ID,
 		&rec.Role,
 		&rec.FirstName,
@@ -201,4 +221,43 @@ func (r *Repository) findUser(ctx context.Context, query string, args ...any) (e
 	}
 
 	return rec, nil
+}
+
+func (r *Repository) FindActiveHRsWithWorkload(ctx context.Context) ([]assignment.HRWorkload, error) {
+	query := `
+				SELECT 
+					u.id,
+					COALESCE(COUNT(f.id) FILTER (WHERE f.status = 'pending'), 0) AS pending_forms_count
+				FROM users u
+				LEFT JOIN forms f ON f.executor_id = u.id
+				WHERE u.user_role = 'hr' AND u.is_active = true
+				GROUP BY u.id
+				ORDER BY pending_forms_count , u.id
+			`
+
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+	
+	rows, err := conn.Query(ctx, query)
+	if err != nil {
+		log.Printf("failed to query active HRs with workload: %v", err)
+		return nil, errs.ErrInternalServer
+	}
+	defer rows.Close()
+
+	var results []assignment.HRWorkload
+	for rows.Next() {
+		var hw assignment.HRWorkload
+		if err := rows.Scan(&hw.UserID, &hw.PendingFormsCount); err != nil {
+			log.Printf("failed to scan HR workload: %v", err)
+			return nil, errs.ErrInternalServer
+		}
+		results = append(results, hw)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("rows iteration error: %v", err)
+		return nil, errs.ErrInternalServer
+	}
+
+	return results, nil
 }

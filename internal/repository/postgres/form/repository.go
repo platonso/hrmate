@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	trmpgx "github.com/avito-tech/go-transaction-manager/drivers/pgxv5/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,24 +17,31 @@ import (
 )
 
 type Repository struct {
-	DB *pgxpool.Pool
+	db        *pgxpool.Pool
+	ctxGetter *trmpgx.CtxGetter
 }
 
 func NewRepository(db *pgxpool.Pool) *Repository {
-	return &Repository{DB: db}
+	return &Repository{
+		db:        db,
+		ctxGetter: trmpgx.DefaultCtxGetter,
+	}
 }
 
 func (r *Repository) Create(ctx context.Context, form *domain.Form) error {
 	rec := entity.ToFormRecord(*form)
 	query := `
-		INSERT INTO forms (id, user_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO forms (id, user_id, executor_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 `
-	_, err := r.DB.Exec(
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	_, err := conn.Exec(
 		ctx,
 		query,
 		rec.ID,
 		rec.UserID,
+		rec.ExecutorID,
 		rec.Title,
 		rec.Description,
 		rec.StartDate,
@@ -48,7 +56,7 @@ func (r *Repository) Create(ctx context.Context, form *domain.Form) error {
 
 func (r *Repository) FindAll(ctx context.Context) ([]domain.Form, error) {
 	query := `
-        SELECT id, user_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment
+        SELECT id, user_id, executor_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment
         FROM forms
         ORDER BY created_at DESC
     `
@@ -63,7 +71,7 @@ func (r *Repository) FindAll(ctx context.Context) ([]domain.Form, error) {
 
 func (r *Repository) FindByFormID(ctx context.Context, formId uuid.UUID) (*domain.Form, error) {
 	query := `
-		SELECT id, user_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment
+		SELECT id, user_id, executor_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment
 		FROM forms
 		WHERE id = $1
 `
@@ -77,7 +85,7 @@ func (r *Repository) FindByFormID(ctx context.Context, formId uuid.UUID) (*domai
 
 func (r *Repository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]domain.Form, error) {
 	query := `
-        SELECT id, user_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment
+        SELECT id, user_id, executor_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment
         FROM forms 
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -92,7 +100,7 @@ func (r *Repository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]doma
 }
 
 func (r *Repository) FindByFilter(ctx context.Context, filter *formservice.Filter) ([]domain.Form, error) {
-	query := `SELECT id, user_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment FROM forms`
+	query := `SELECT id, user_id, executor_id, title, description, start_date, end_date, created_at, reviewed_at, status, comment FROM forms`
 	var conditions []string
 	var args []any
 	argPos := 1
@@ -101,6 +109,12 @@ func (r *Repository) FindByFilter(ctx context.Context, filter *formservice.Filte
 		if filter.UserID != nil {
 			conditions = append(conditions, fmt.Sprintf("user_id = $%d", argPos))
 			args = append(args, *filter.UserID)
+			argPos++
+		}
+
+		if filter.ExecutorID != nil {
+			conditions = append(conditions, fmt.Sprintf("executor_id = $%d", argPos))
+			args = append(args, *filter.ExecutorID)
 			argPos++
 		}
 
@@ -132,7 +146,9 @@ func (r *Repository) Update(ctx context.Context, form *domain.Form) error {
 	SET reviewed_at = $1, status = $2, comment = $3
 	WHERE id = $4`
 
-	tag, err := r.DB.Exec(ctx, query, rec.ReviewedAt, rec.Status, rec.Comment, rec.ID)
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+
+	tag, err := conn.Exec(ctx, query, rec.ReviewedAt, rec.Status, rec.Comment, rec.ID)
 	if err != nil {
 		return err
 	}
@@ -146,9 +162,11 @@ func (r *Repository) Update(ctx context.Context, form *domain.Form) error {
 
 func (r *Repository) findForm(ctx context.Context, query string, args ...any) (entity.FormRecord, error) {
 	var rec entity.FormRecord
-	err := r.DB.QueryRow(ctx, query, args...).Scan(
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+	err := conn.QueryRow(ctx, query, args...).Scan(
 		&rec.ID,
 		&rec.UserID,
+		&rec.ExecutorID,
 		&rec.Title,
 		&rec.Description,
 		&rec.StartDate,
@@ -168,7 +186,8 @@ func (r *Repository) findForm(ctx context.Context, query string, args ...any) (e
 }
 
 func (r *Repository) findForms(ctx context.Context, query string, args ...any) ([]entity.FormRecord, error) {
-	rows, err := r.DB.Query(ctx, query, args...)
+	conn := r.ctxGetter.DefaultTrOrDB(ctx, r.db)
+	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query forms: %w", err)
 	}
